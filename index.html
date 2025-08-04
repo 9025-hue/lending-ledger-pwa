@@ -6,6 +6,11 @@
   <title>Lending Ledger</title>
   <!-- PWA meta tags -->
   <meta name="theme-color" content="#1f2937">
+  <!-- PWA Manifest -->
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="apple-touch-icon" href="/icons/icon-192x192.png">
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Inter font from Google Fonts -->
@@ -185,10 +190,11 @@
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
         const swScript = `
-          const CACHE_NAME = 'lending-ledger-cache-v1';
+          const CACHE_NAME = 'lending-ledger-cache-v2';
           const urlsToCache = [
             './',
             './index.html',
+            './manifest.json',
             'https://cdn.tailwindcss.com',
             'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
             'https://fonts.gstatic.com',
@@ -200,11 +206,9 @@
           ];
 
           self.addEventListener('install', (event) => {
-            console.log('[Service Worker] Installing...');
             event.waitUntil(
               caches.open(CACHE_NAME)
                 .then((cache) => {
-                  console.log('[Service Worker] Caching all content');
                   return cache.addAll(urlsToCache);
                 })
             );
@@ -214,11 +218,23 @@
             event.respondWith(
               caches.match(event.request)
                 .then((response) => {
-                  if (response) {
-                    return response;
-                  }
-                  return fetch(event.request);
+                  return response || fetch(event.request);
                 })
+            );
+          });
+
+          self.addEventListener('activate', (event) => {
+            const cacheWhitelist = [CACHE_NAME];
+            event.waitUntil(
+              caches.keys().then((cacheNames) => {
+                return Promise.all(
+                  cacheNames.map((cacheName) => {
+                    if (!cacheWhitelist.includes(cacheName)) {
+                      return caches.delete(cacheName);
+                    }
+                  })
+                );
+              })
             );
           });
         `;
@@ -947,6 +963,41 @@
       doc.save(`${clientName}_Report.pdf`);
     };
 
+  </script>
+  <script>
+  let deferredPrompt;
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  // Prevent the mini-infobar from appearing on mobile
+  e.preventDefault();
+  // Stash the event so it can be triggered later
+  deferredPrompt = e;
+  // Show the install button if it exists
+  const installButton = document.getElementById('install-button');
+  if (installButton) {
+    installButton.classList.remove('hidden');
+    installButton.onclick = async () => {
+      deferredPrompt.prompt();
+      const choiceResult = await deferredPrompt.userChoice;
+      if (choiceResult.outcome === 'accepted') {
+        console.log('User accepted the install prompt');
+        installButton.classList.add('hidden');
+      } else {
+        console.log('User dismissed the install prompt');
+      }
+      deferredPrompt = null;
+    };
+  }
+});
+
+// Hide the install button after app is installed
+window.addEventListener('appinstalled', () => {
+  console.log('PWA was installed');
+  const installButton = document.getElementById('install-button');
+  if (installButton) {
+    installButton.classList.add('hidden');
+  }
+});
   </script>
 </body>
 </html>
