@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lending Ledger</title>
+  <!-- PWA meta tags -->
+  <meta name="theme-color" content="#1f2937">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Inter font from Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+  </style>
+</head>
+<body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- Navbar -->
+  <nav id="navbar" class="bg-gray-800 p-4 shadow-lg rounded-b-lg hidden">
+    <div class="container mx-auto flex justify-between items-center">
+      <h1 class="text-white text-2xl font-bold">Lending Ledger</h1>
+      <div class="flex space-x-4" id="navbar-links">
+        <button onclick="changeView('dashboard')" class="px-4 py-2 rounded-lg transition-colors text-gray-300 hover:bg-gray-700 hover:text-white">Dashboard</button>
+        <button onclick="changeView('clients')" class="px-4 py-2 rounded-lg transition-colors text-gray-300 hover:bg-gray-700 hover:text-white">Clients</button>
+        <button onclick="changeView('payable')" class="px-4 py-2 rounded-lg transition-colors text-gray-300 hover:bg-gray-700 hover:text-white">Accounts Payable</button>
+        <button onclick="signOutUser()" class="px-4 py-2 rounded-lg transition-colors text-gray-300 hover:bg-gray-700 hover:text-white">Sign Out</button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Login/Auth Page -->
+  <div id="login-page" class="flex-grow flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
+      <!-- Auth Mode Switcher -->
+      <div class="flex space-x-2 justify-center mb-6">
+        <button id="login-tab" onclick="setAuthMode('login')" class="px-6 py-2 rounded-lg text-gray-500 hover:bg-gray-200 font-semibold transition-all">Log In</button>
+        <button id="register-tab" onclick="setAuthMode('register')" class="px-6 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition-all">Register</button>
+      </div>
+
+      <h2 class="text-3xl font-bold text-gray-800 mb-6" id="auth-title">Register for Lending Ledger</h2>
+      <p class="text-gray-600 mb-6" id="auth-message">Create an account with your email and password.</p>
+
+      <form id="email-auth-form" class="space-y-4">
+        <input type="text" id="display-name-input" placeholder="Your Name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+        <input type="email" id="email-input" placeholder="Email Address" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+        <input type="password" id="password-input" placeholder="Password" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+        
+        <!-- Forgot password link, hidden in register mode -->
+        <div id="forgot-password-link" class="flex justify-end text-sm hidden">
+          <button type="button" onclick="handleForgotPassword()" class="text-indigo-600 hover:underline transition-colors font-semibold">Forgot Password?</button>
+        </div>
+        
+        <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-indigo-700 transition-colors" id="email-auth-button">
+          Register
+        </button>
+      </form>
+
+      <!-- Biometric Login Button -->
+      <div id="biometric-login-container" class="mt-6 hidden">
+        <div class="relative flex items-center justify-center py-4">
+          <div class="flex-grow border-t border-gray-300"></div>
+          <span class="flex-shrink mx-4 text-gray-400">Or</span>
+          <div class="flex-grow border-t border-gray-300"></div>
+        </div>
+        <button id="biometric-login-button" onclick="signInWithBiometrics()" class="w-full bg-gray-200 text-gray-800 font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-gray-300 transition-colors">
+          Log In with Biometrics
+        </button>
+      </div>
+
+      <div id="auth-error-message" class="text-red-500 mt-4 text-sm hidden"></div>
+    </div>
+  </div>
+
+  <!-- Main content container -->
+  <main id="main-content" class="container mx-auto p-4 hidden">
+    <div id="app-container">
+      <!-- Views will be injected here -->
+    </div>
+  </main>
+  
+  <!-- Initialization Error Display -->
+  <div id="init-error" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center p-4">
+    <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
+      <h3 class="text-2xl font-bold text-red-600 mb-4">Application Error</h3>
+      <p id="init-error-message" class="text-gray-700 mb-6">An unknown error occurred during initialization. Please try again later.</p>
+      <button onclick="closeModal('init-error')" class="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors">Close</button>
+    </div>
+  </div>
+
+  <!-- Modal for adding/editing a loan -->
+  <div id="loan-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
+    <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
+      <div class="flex justify-between items-center mb-4">
+        <h3 id="modal-title" class="text-2xl font-bold text-gray-800">Add New Loan</h3>
+        <button onclick="closeModal('loan-modal')" class="text-gray-500 hover:text-gray-800 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+      <form id="loan-form">
+        <input type="hidden" id="transaction-id">
+        <div class="mb-4">
+          <label for="borrower-name" class="block text-gray-700 font-medium mb-2">Client Name</label>
+          <input type="text" id="borrower-name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+        </div>
+        <div class="mb-4">
+          <label for="amount" class="block text-gray-700 font-medium mb-2">Original Amount (R)</label>
+          <input type="number" id="amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" step="0.01" required>
+        </div>
+        <div class="mb-4">
+          <label for="interest-rate" class="block text-gray-700 font-medium mb-2">Monthly Interest Rate (%)</label>
+          <input type="number" id="interest-rate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" min="0" step="0.1" required>
+        </div>
+        <div class="mb-4">
+          <label for="loan-period" class="block text-gray-700 font-medium mb-2">Loan Period (Months)</label>
+          <input type="number" id="loan-period" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" min="1" required>
+        </div>
+        <div class="mb-6">
+          <label for="due-date" class="block text-gray-700 font-medium mb-2">Due Date</label>
+          <input type="date" id="due-date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+        </div>
+        <div class="flex justify-end space-x-4">
+          <button type="button" onclick="closeModal('loan-modal')" class="bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors">Cancel</button>
+          <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">Submit</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal for making a payment -->
+  <div id="payment-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
+    <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
+      <div class="flex justify-between items-center mb-4">
+        <h3 class="text-2xl font-bold text-gray-800">Make a Payment</h3>
+        <button onclick="closeModal('payment-modal')" class="text-gray-500 hover:text-gray-800 transition-colors">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+      <p class="mb-4 text-gray-700">Client: <span class="font-semibold" id="payment-client-name"></span></p>
+      <p class="mb-6 text-gray-700">Current Balance: <span class="font-semibold text-xl text-yellow-600" id="payment-current-balance"></span></p>
+      <form id="payment-form">
+        <input type="hidden" id="payment-transaction-id">
+        <div class="mb-4">
+          <label for="payment-amount" class="block text-gray-700 font-medium mb-2">Payment Amount (R)</label>
+          <input type="number" id="payment-amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" step="0.01" min="0.01" required>
+        </div>
+        <div class="flex justify-end space-x-4">
+          <button type="button" onclick="closeModal('payment-modal')" class="bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors">Cancel</button>
+          <button type="submit" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors">Process Payment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal for messages and custom alerts -->
+  <div id="message-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
+    <div class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full text-center">
+      <h3 id="message-modal-title" class="text-xl font-bold mb-4"></h3>
+      <p id="message-modal-content" class="text-gray-700 mb-6"></p>
+      <button onclick="closeModal('message-modal')" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">OK</button>
+    </div>
+  </div>
+
+  <!-- Firebase & PDF Libraries -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://unpkg.com/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import {
+        getAuth,
+        onAuthStateChanged,
+        signOut,
+        createUserWithEmailAndPassword,
+        signInWithEmailAndPassword,
+        sendPasswordResetEmail
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getFirestore, collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // PWA Manifest and Service Worker registration
+    if ('serviceWorker' in navigator) {
+      const manifestData = {
+        name: 'Lending Ledger',
+        short_name: 'LendingLedger',
+        description: 'Manage your lending and payable accounts.',
+        start_url: './',
+        display: 'standalone',
+        background_color: '#ffffff',
+        theme_color: '#1f2937',
+        icons: [
+          {
+            src: 'https://placehold.co/192x192/000000/FFFFFF?text=LL',
+            sizes: '192x192',
+            type: 'image/png'
+          },
+          {
+            src: 'https://placehold.co/512x512/000000/FFFFFF?text=LL',
+            sizes: '512x512',
+            type: 'image/png'
+          }
+        ]
+      };
+      const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/json' });
+      const manifestUrl = URL.createObjectURL(manifestBlob);
+
+      const link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = manifestUrl;
+      document.head.appendChild(link);
+
+      const serviceWorkerScript = `
+        const CACHE_NAME = 'lending-ledger-cache-v1';
+        const urlsToCache = [
+          './',
+          'https://cdn.tailwindcss.com',
+          'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+          'https://fonts.gstatic.com',
+          'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+          'https://unpkg.com/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.js',
+          'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
+          'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
+          'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js',
+        ];
+
+        self.addEventListener('install', (event) => {
+          event.waitUntil(
+            caches.open(CACHE_NAME)
+              .then((cache) => {
+                return cache.addAll(urlsToCache);
+              })
+          );
+        });
+
+        self.addEventListener('fetch', (event) => {
+          event.respondWith(
+            caches.match(event.request)
+              .then((response) => {
+                if (response) {
+                  return response;
+                }
+                return fetch(event.request);
+              })
+          );
+        });
+      `;
+      const swBlob = new Blob([serviceWorkerScript], { type: 'application/javascript' });
+      const swUrl = URL.createObjectURL(swBlob);
+
+      navigator.serviceWorker.register(swUrl).then(function(registration) {
+        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+      }).catch(function(err) {
+        console.log('ServiceWorker registration failed: ', err);
+      });
+    }
+
+    // Global state management
+    const state = {
+      db: null,
+      auth: null,
+      userId: null,
+      displayName: null,
+      isAuthReady: false,
+      receivables: [],
+      payables: [],
+      clients: [],
+      activeView: 'dashboard',
+      currentClientName: null,
+      isRegisterMode: true, // Set to true by default to show the registration form initially
+    };
+
+    // Your web app's Firebase configuration
+    // This configuration is used to connect to your specific Firebase project
+    const firebaseConfig = {
+      apiKey: "AIzaSyArljsBjgdSiZxKYQnAYMSx93C8H6jBy0Y",
+      authDomain: "loan-lending-772ad.firebaseapp.com",
+      projectId: "loan-lending-772ad",
+      storageBucket: "loan-lending-772ad.firebasestorage.app",
+      messagingSenderId: "308404853120",
+      appId: "1:308404853120:web:18b3a4ab1189e9cb8a0965",
+      measurementId: "G-1NS69YRCF0"
+    };
+
+    // Global variables provided by the Canvas environment. We use defaults if they're not available.
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
+    // Function to calculate accrued interest on the outstanding balance
+    const calculateCurrentBalance = (transaction) => {
+      if (transaction.isPaid) {
+        return 0;
+      }
+      if (!transaction.createdAt) {
+        return transaction.currentBalance || transaction.amount || 0;
+      }
+
+      const now = new Date();
+      const createdAtDate = transaction.createdAt.toDate ? transaction.createdAt.toDate() : new Date(transaction.createdAt.seconds * 1000);
+      const monthsElapsed = (now.getFullYear() - createdAtDate.getFullYear()) * 12 + (now.getMonth() - createdAtDate.getMonth());
+      const monthlyInterestRate = transaction.interestRate || 0;
+      const currentBalance = (transaction.currentBalance || transaction.amount) * Math.pow(1 + monthlyInterestRate, monthsElapsed);
+      return currentBalance;
+    };
+
+    // Function to format date
+    const formatDate = (date) => {
+      if (!date) return 'N/A';
+      const d = date.toDate ? date.toDate() : new Date(date);
+      return d.toLocaleDateString();
+    };
+
+    // Custom message modal
+    window.showMessage = (title, message) => {
+      document.getElementById('message-modal-title').textContent = title;
+      document.getElementById('message-modal-content').textContent = message;
+      openModal('message-modal');
+    };
+
+    // Toggles between login and register views on the auth page
+    window.setAuthMode = (mode) => {
+      state.isRegisterMode = (mode === 'register');
+      const title = document.getElementById('auth-title');
+      const message = document.getElementById('auth-message');
+      const button = document.getElementById('email-auth-button');
+      const nameInput = document.getElementById('display-name-input');
+      const forgotPasswordLink = document.getElementById('forgot-password-link');
+      const loginTab = document.getElementById('login-tab');
+      const registerTab = document.getElementById('register-tab');
+      const biometricContainer = document.getElementById('biometric-login-container');
+      const errorDiv = document.getElementById('auth-error-message');
+      errorDiv.classList.add('hidden');
+      errorDiv.textContent = '';
+      
+      if (state.isRegisterMode) {
+        title.textContent = 'Register for Lending Ledger';
+        message.textContent = 'Create an account with your email and password.';
+        button.textContent = 'Register';
+        nameInput.classList.remove('hidden');
+        nameInput.disabled = false;
+        forgotPasswordLink.classList.add('hidden');
+        loginTab.classList.remove('bg-indigo-600', 'text-white');
+        loginTab.classList.add('text-gray-500', 'hover:bg-gray-200');
+        registerTab.classList.add('bg-indigo-600', 'text-white');
+        registerTab.classList.remove('text-gray-500', 'hover:bg-gray-200');
+        biometricContainer.classList.add('hidden');
+      } else {
+        title.textContent = 'Log In to Lending Ledger';
+        message.textContent = 'Please sign in to continue.';
+        button.textContent = 'Log In';
+        nameInput.classList.add('hidden');
+        nameInput.disabled = true;
+        forgotPasswordLink.classList.remove('hidden');
+        registerTab.classList.remove('bg-indigo-600', 'text-white');
+        registerTab.classList.add('text-gray-500', 'hover:bg-gray-200');
+        loginTab.classList.add('bg-indigo-600', 'text-white');
+        loginTab.classList.remove('text-gray-500', 'hover:bg-gray-200');
+        
+        // Show biometric option if it's been registered
+        if (localStorage.getItem('isBiometricRegistered')) {
+          biometricContainer.classList.remove('hidden');
+        }
+      }
+    };
+
+    // Handles authentication errors
+    const handleAuthError = (error) => {
+        const errorDiv = document.getElementById('auth-error-message');
+        errorDiv.textContent = error.message;
+        errorDiv.classList.remove('hidden');
+        console.error("Authentication Error:", error);
+    };
+
+    // Handle Forgot Password
+    window.handleForgotPassword = async () => {
+        const email = document.getElementById('email-input').value;
+        if (!email) {
+            handleAuthError({ message: "Please enter your email address to reset your password." });
+            return;
+        }
+
+        try {
+            await sendPasswordResetEmail(state.auth, email);
+            showMessage("Password Reset", `A password reset link has been sent to ${email}. Please check your inbox.`);
+        } catch (error) {
+            handleAuthError(error);
+        }
+    };
+    
+    // Function to simulate biometric registration
+    window.enableBiometricLogin = () => {
+      // In a real app, this would initiate a WebAuthn registration flow
+      // A server would generate a challenge and the client's WebAuthn API
+      // would interact with the device's biometric sensor.
+      try {
+        // Simulate a successful registration
+        localStorage.setItem('isBiometricRegistered', 'true');
+        showMessage('Biometric Login Enabled', 'You have successfully enabled biometric login for this device. The next time you log in, you can use the biometric button.');
+        renderApp(); // Rerender to update the dashboard button
+      } catch (error) {
+        console.error("Biometric registration failed:", error);
+        showMessage('Biometric Registration Failed', 'There was an issue enabling biometric login. Please try again.');
+      }
+    };
+
+    // Function to simulate biometric sign-in
+    window.signInWithBiometrics = () => {
+        if (localStorage.getItem('isBiometricRegistered')) {
+            // In a real app, this would initiate a WebAuthn authentication flow.
+            // A server would provide a challenge, and the WebAuthn API would
+            // verify the user's biometric scan against the stored credential.
+            showMessage('Biometric Sign-in', 'Simulating a successful biometric authentication...');
+            // Since we don't have a real server, we simulate a successful login by refreshing the page
+            // to show the logged-in state.
+            setTimeout(() => {
+                window.location.reload(); 
+            }, 1000);
+        } else {
+            showMessage('Biometric Not Enabled', 'Please sign in with your email and password first, then enable biometric login from the dashboard.');
+        }
+    };
+
+
+    // Firebase Initialization and Authentication
+    window.addEventListener('load', async () => {
+      try {
+        if (!firebaseConfig || !firebaseConfig.projectId) {
+            console.error("Firebase Initialization Error: 'projectId' is missing from the configuration.");
+            document.getElementById('init-error-message').textContent = "Failed to initialize the application. Please provide a valid Firebase configuration.";
+            openModal('init-error');
+            return;
+        }
+
+        const app = initializeApp(firebaseConfig);
+        state.db = getFirestore(app);
+        state.auth = getAuth(app);
+
+        // Initially set the auth mode to register
+        setAuthMode('register');
+        
+        onAuthStateChanged(state.auth, async (user) => {
+          if (user) {
+            console.log("User authenticated:", user.uid);
+            state.userId = user.uid;
+            
+            // Fetch the user's display name
+            const userDocRef = doc(state.db, `/artifacts/${appId}/users/${state.userId}/profile`, 'info');
+            try {
+                const userDoc = await getDoc(userDocRef);
+                state.displayName = userDoc.exists() ? userDoc.data().displayName : user.email;
+            } catch (error) {
+                console.error("Error fetching user profile:", error);
+                state.displayName = user.email;
+            }
+
+            state.isAuthReady = true;
+            startListeners();
+            document.getElementById('login-page').classList.add('hidden');
+            document.getElementById('navbar').classList.remove('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+            renderApp();
+          } else {
+            console.log("User not authenticated.");
+            state.userId = null;
+            state.displayName = null;
+            state.isAuthReady = true;
+            document.getElementById('login-page').classList.remove('hidden');
+            document.getElementById('navbar').classList.add('hidden');
+            document.getElementById('main-content').classList.add('hidden');
+            // Re-check and update UI for biometric button on logout
+            setAuthMode('login');
+          }
+        });
+
+      } catch (error) {
+        console.error("Error initializing Firebase:", error);
+        document.getElementById('init-error-message').textContent = "An error occurred during Firebase initialization. Please check the console for details.";
+        openModal('init-error');
+      }
+      
+      document.getElementById('email-auth-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('email-input').value;
+        const password = document.getElementById('password-input').value;
+        const displayName = document.getElementById('display-name-input').value;
+        const errorDiv = document.getElementById('auth-error-message');
+        errorDiv.classList.add('hidden');
+
+        if (state.isRegisterMode) {
+          // Register with email and password
+          try {
+            const userCredential = await createUserWithEmailAndPassword(state.auth, email, password);
+            const user = userCredential.user;
+            // Store the display name in a new profile document
+            await setDoc(doc(state.db, `/artifacts/${appId}/users/${user.uid}/profile`, 'info'), {
+                displayName: displayName,
+                email: email
+            });
+          } catch (error) {
+            handleAuthError(error);
+          }
+        } else {
+          // Sign in with email and password
+          try {
+            await signInWithEmailAndPassword(state.auth, email, password);
+          } catch (error) {
+            handleAuthError(error);
+          }
+        }
+      });
+    });
+
+    window.signOutUser = async () => {
+      if (state.auth) {
+        await signOut(state.auth);
+      }
+    }
+
+    const startListeners = () => {
+      // Only start listeners if the user is authenticated and the database is ready
+      if (!state.db || !state.userId) {
+        console.error("startListeners called without a valid user ID or database instance.");
+        return;
+      }
+      console.log(`Starting Firestore listeners for user ID: ${state.userId}`);
+
+      const receivablesPath = `/artifacts/${appId}/users/${state.userId}/receivables`;
+      const payablesPath = `/artifacts/${appId}/users/${state.userId}/payables`;
+
+      onSnapshot(collection(state.db, receivablesPath), (snapshot) => {
+        state.receivables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const uniqueClients = [...new Set(state.receivables.map(item => item.borrowerName))].map(name => ({ name }));
+        state.clients = uniqueClients;
+        renderApp();
+      }, (error) => console.error("Error fetching receivables:", error));
+
+      onSnapshot(collection(state.db, payablesPath), (snapshot) => {
+        state.payables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        renderApp();
+      }, (error) => console.error("Error fetching payables:", error));
+    };
+
+    window.changeView = (viewName, clientName = null) => {
+      state.activeView = viewName;
+      state.currentClientName = clientName;
+      renderApp();
+    };
+
+    const renderDashboard = () => {
+      const totalReceivable = state.receivables.filter(t => !t.isPaid).reduce((sum, t) => sum + calculateCurrentBalance(t), 0);
+      const totalPayable = state.payables.filter(t => !t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
+      const totalPaidReceivable = state.receivables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
+      const totalPaidPayable = state.payables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
+      const profit = totalPaidReceivable - totalPaidPayable;
+      const isBiometricEnabled = localStorage.getItem('isBiometricRegistered');
+
+      return `
+        <div class="p-8">
+          <h2 class="text-3xl font-bold mb-6 text-gray-800">Dashboard</h2>
+          <div class="bg-gray-100 p-4 rounded-lg shadow-inner mb-6">
+            <p class="text-gray-600">Welcome, <span class="font-semibold">${state.displayName || 'Guest'}</span>!</p>
+            <p class="text-gray-600 mt-2">Your User ID: <span class="font-mono break-all text-sm">${state.userId}</span></p>
+          </div>
+          <div class="flex justify-start mb-6">
+            <button onclick="enableBiometricLogin()" class="${isBiometricEnabled ? 'bg-gray-500 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'} text-white px-6 py-3 rounded-full shadow-lg transition-colors" ${isBiometricEnabled ? 'disabled' : ''}>
+              ${isBiometricEnabled ? 'Biometric Login Enabled' : 'Enable Biometric Login'}
+            </button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+            ${renderCard("Total Accounts Receivable", `R${totalReceivable.toFixed(2)}`, "bg-blue-500")}
+            ${renderCard("Total Accounts Payable", `R${totalPayable.toFixed(2)}`, "bg-red-500")}
+            ${renderCard("Total Paid (Receivable)", `R${totalPaidReceivable.toFixed(2)}`, "bg-green-500")}
+            ${renderCard("Net Profit", `R${profit.toFixed(2)}`, "bg-yellow-500")}
+          </div>
+          <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h3 class="text-2xl font-bold text-gray-800 mb-4">Financial Summary</h3>
+            <p class="text-xl">
+              Net Profit: <span class="font-bold ${profit >= 0 ? 'text-green-600' : 'text-red-600'}">R${profit.toFixed(2)}</span>
+            </p>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderCard = (title, value, color) => `
+      <div class="p-6 rounded-lg shadow-lg text-white ${color}">
+        <h3 class="text-lg font-semibold">${title}</h3>
+        <p class="text-4xl font-bold mt-2">${value}</p>
+      </div>
+    `;
+
+    const renderClientsView = () => {
+      const clientsList = state.clients.length > 0 ?
+        state.clients.map((client) => `
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${client.name}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+              <button onclick="changeView('clientReport', '${client.name}')" class="text-indigo-600 hover:text-indigo-900 transition-colors">View Report</button>
+            </td>
+          </tr>
+        `).join('') :
+        `<tr><td colspan="2" class="p-4 text-center text-gray-500">No clients found. Add a new loan to get started.</td></tr>`;
+
+      return `
+        <div class="p-8">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-bold text-gray-800">Your Clients</h2>
+            <div class="flex space-x-4">
+              <button onclick="downloadAllReports()" class="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-green-700 transition-colors">
+                Download All Reports (PDF)
+              </button>
+              <button onclick="openLoanModal()" class="bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors">
+                Add New Loan
+              </button>
+            </div>
+          </div>
+          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client Name</th>
+                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200">
+                ${clientsList}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderClientReportView = () => {
+      const clientLoans = state.receivables.filter(loan => loan.borrowerName === state.currentClientName);
+      const totalLoanAmount = clientLoans.reduce((sum, loan) => sum + (loan.amount || 0), 0);
+      const totalOutstandingBalance = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
+
+      const loansList = clientLoans.length > 0 ?
+        clientLoans.map((loan) => `
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${formatDate(loan.createdAt)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${loan.amount.toFixed(2)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${loan.isPaid ? '0.00' : (calculateCurrentBalance(loan)).toFixed(2)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${(loan.interestRate * 100).toFixed(1)}%</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${loan.isPaid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                ${loan.isPaid ? 'Paid' : 'Unpaid'}
+              </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+              ${!loan.isPaid ? `<button onclick="openPaymentModal('${loan.id}')" class="text-green-600 hover:text-green-900 mx-2 transition-colors" title="Make Payment">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                </svg>
+              </button>` : ''}
+              <button onclick="openLoanModal('${loan.id}')" class="text-indigo-600 hover:text-indigo-900 mx-2 transition-colors" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg></button>
+            </td>
+          </tr>
+        `).join('') :
+        `<tr><td colspan="6" class="p-4 text-center text-gray-500">This client has no loans.</td></tr>`;
+
+      return `
+        <div class="p-8">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-bold text-gray-800">Client Report: ${state.currentClientName}</h2>
+            <button onclick="downloadClientReport('${state.currentClientName}')" class="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-green-700 transition-colors">
+              Download PDF Report
+            </button>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            ${renderCard("Total Loaned Amount", `R${totalLoanAmount.toFixed(2)}`, "bg-gray-700")}
+            ${renderCard("Total Outstanding Balance", `R${totalOutstandingBalance.toFixed(2)}`, "bg-yellow-600")}
+          </div>
+          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loan Date</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Amount</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Balance</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest Rate</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200">
+                ${loansList}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderPayablesView = () => {
+      const payablesList = state.payables.length > 0 ?
+        state.payables.map((transaction) => `
+          <tr class="hover:bg-gray-50 transition-colors">
+            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${transaction.lenderName}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${transaction.amount ? transaction.amount.toFixed(2) : '0.00'}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(transaction.dueDate)}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-sm">
+              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${transaction.isPaid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                ${transaction.isPaid ? 'Paid' : 'Unpaid'}
+              </span>
+            </td>
+            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+              <button onclick="openPayableModal('${transaction.id}')" class="text-indigo-600 hover:text-indigo-900 mx-2 transition-colors" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor"><path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" /></svg></button>
+              <button onclick="deleteTransaction('${transaction.id}', 'payable')" class="text-red-600 hover:text-red-900 mx-2 transition-colors" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg></button>
+            </td>
+          </tr>
+        `).join('') :
+        `<tr><td colspan="5" class="p-4 text-center text-gray-500">No payables found. Click "Add New Payable" to get started.</td></tr>`;
+
+      return `
+        <div class="p-8">
+          <div class="flex justify-between items-center mb-6">
+            <h2 class="text-3xl font-bold text-gray-800">Accounts Payable</h2>
+            <button onclick="openPayableModal()" class="bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors">
+              Add New Payable
+            </button>
+          </div>
+          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                <tr>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lender Name</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
+                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody class="bg-white divide-y divide-gray-200">
+                ${payablesList}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    };
+
+    const renderApp = () => {
+      const appContainer = document.getElementById('app-container');
+      if (!appContainer || !state.isAuthReady) {
+        return;
+      }
+
+      switch (state.activeView) {
+        case 'dashboard':
+          appContainer.innerHTML = renderDashboard();
+          break;
+        case 'clients':
+          appContainer.innerHTML = renderClientsView();
+          break;
+        case 'clientReport':
+          appContainer.innerHTML = renderClientReportView();
+          break;
+        case 'payable':
+          appContainer.innerHTML = renderPayablesView();
+          break;
+        default:
+          appContainer.innerHTML = renderDashboard();
+          break;
+      }
+    };
+
+    window.openModal = (modalId) => {
+      document.getElementById(modalId).classList.remove('hidden');
+    };
+    window.closeModal = (modalId) => {
+      document.getElementById(modalId).classList.add('hidden');
+    };
+
+    window.openLoanModal = (transactionId = null) => {
+      const modalTitle = document.getElementById('modal-title');
+      const loanForm = document.getElementById('loan-form');
+      loanForm.reset();
+      const transaction = transactionId ? state.receivables.find(t => t.id === transactionId) : null;
+      document.getElementById('transaction-id').value = transactionId || '';
+
+      if (transaction) {
+        modalTitle.textContent = 'Edit Loan';
+        document.getElementById('borrower-name').value = transaction.borrowerName;
+        document.getElementById('amount').value = transaction.amount;
+        document.getElementById('interest-rate').value = (transaction.interestRate * 100);
+        document.getElementById('loan-period').value = transaction.loanPeriod;
+        document.getElementById('due-date').value = formatDate(transaction.dueDate).split('/').reverse().join('-');
+      } else {
+        modalTitle.textContent = 'Add New Loan';
+      }
+      openModal('loan-modal');
+    };
+
+    window.openPayableModal = (transactionId = null) => {
+      const modalTitle = document.getElementById('modal-title');
+      const loanForm = document.getElementById('loan-form');
+      loanForm.reset();
+      const transaction = transactionId ? state.payables.find(t => t.id === transactionId) : null;
+      document.getElementById('transaction-id').value = transactionId || '';
+
+      if (transaction) {
+        modalTitle.textContent = 'Edit Payable';
+        document.getElementById('borrower-name').value = transaction.lenderName;
+        document.getElementById('amount').value = transaction.amount;
+        document.getElementById('interest-rate').value = 0;
+        document.getElementById('loan-period').value = 1;
+        document.getElementById('due-date').value = new Date(transaction.dueDate.toDate()).toISOString().split('T')[0];
+      } else {
+        modalTitle.textContent = 'Add New Payable';
+      }
+      openModal('loan-modal');
+    };
+
+    window.openPaymentModal = (transactionId) => {
+      const transaction = state.receivables.find(t => t.id === transactionId);
+      if (!transaction) return;
+
+      const currentBalance = calculateCurrentBalance(transaction);
+      document.getElementById('payment-transaction-id').value = transactionId;
+      document.getElementById('payment-client-name').textContent = transaction.borrowerName;
+      document.getElementById('payment-current-balance').textContent = `R${currentBalance.toFixed(2)}`;
+      document.getElementById('payment-amount').max = currentBalance.toFixed(2);
+      document.getElementById('payment-form').reset();
+      openModal('payment-modal');
+    };
+
+    document.getElementById('loan-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const transactionId = form['transaction-id'].value;
+      const borrowerName = form['borrower-name'].value;
+      const amount = parseFloat(form['amount'].value);
+      const loanPeriod = parseInt(form['loan-period'].value, 10);
+      const interestRate = parseFloat(form['interest-rate'].value) / 100;
+      const dueDate = new Date(form['due-date'].value);
+
+      const isPayable = state.activeView === 'payable';
+      const collectionPath = isPayable ? `/artifacts/${appId}/users/${state.userId}/payables` : `/artifacts/${appId}/users/${state.userId}/receivables`;
+
+      const data = {
+        amount,
+        loanPeriod,
+        dueDate,
+        isPaid: false,
+        createdAt: serverTimestamp(),
+      };
+
+      if (isPayable) {
+        data.lenderName = borrowerName;
+      } else {
+        data.borrowerName = borrowerName;
+        data.interestRate = interestRate;
+        data.currentBalance = amount * (1 + interestRate);
+      }
+
+      try {
+        if (transactionId) {
+          await updateDoc(doc(state.db, collectionPath, transactionId), data);
+        } else {
+          await addDoc(collection(state.db, collectionPath), data);
+        }
+        closeModal('loan-modal');
+      } catch (error) {
+        console.error("Error submitting form:", error);
+      }
+    });
+
+    document.getElementById('payment-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const transactionId = form['payment-transaction-id'].value;
+      const paymentAmount = parseFloat(form['payment-amount'].value);
+
+      const transaction = state.receivables.find(t => t.id === transactionId);
+      if (!transaction || !state.db || !state.userId) {
+        console.error("Transaction not found or Firestore not ready.");
+        return;
+      }
+
+      const updatedBalance = calculateCurrentBalance(transaction) - paymentAmount;
+      const isPaid = updatedBalance <= 0;
+
+      const docRef = doc(state.db, `/artifacts/${appId}/users/${state.userId}/receivables`, transactionId);
+      await updateDoc(docRef, {
+        currentBalance: updatedBalance,
+        isPaid: isPaid,
+      });
+      closeModal('payment-modal');
+    });
+
+    window.deleteTransaction = async (transactionId, type) => {
+      if (!state.db || !state.userId) {
+        console.error("Firestore not initialized or user not authenticated.");
+        return;
+      }
+
+      const collectionPath = type === 'receivable'
+        ? `/artifacts/${appId}/users/${state.userId}/receivables`
+        : `/artifacts/${appId}/users/${state.userId}/payables`;
+      const docRef = doc(state.db, collectionPath, transactionId);
+
+      try {
+        await deleteDoc(docRef);
+      } catch (error) {
+        console.error("Error deleting transaction:", error);
+      }
+    };
+
+    // Corrected function for downloading all client reports
+    window.downloadAllReports = () => {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const headers = [['Client Name', 'Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
+      const data = state.receivables.map(loan => [
+        loan.borrowerName,
+        formatDate(loan.createdAt),
+        loan.amount.toFixed(2),
+        loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
+        (loan.interestRate * 100).toFixed(1) + '%',
+        loan.isPaid ? 'Paid' : 'Unpaid'
+      ]);
+
+      doc.autoTable({
+        head: headers,
+        body: data,
+        startY: 20,
+        headStyles: { fillColor: [31, 41, 55] },
+        theme: 'striped',
+        styles: { font: 'Inter' }
+      });
+      doc.save('All_Client_Reports.pdf');
+    };
+
+    // Corrected function for downloading a single client report
+    window.downloadClientReport = (clientName) => {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      const clientLoans = state.receivables.filter(loan => loan.borrowerName === clientName);
+      const totalOutstanding = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
+
+      doc.setFontSize(16);
+      doc.text(`Client Report: ${clientName}`, 14, 20);
+      doc.setFontSize(12);
+      doc.text(`Total Outstanding Balance: R${totalOutstanding.toFixed(2)}`, 14, 30);
+
+      const headers = [['Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
+      const data = clientLoans.map(loan => [
+        formatDate(loan.createdAt),
+        loan.amount.toFixed(2),
+        loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
+        (loan.interestRate * 100).toFixed(1) + '%',
+        loan.isPaid ? 'Paid' : 'Unpaid'
+      ]);
+
+      doc.autoTable({
+        head: headers,
+        body: data,
+        startY: 40,
+        headStyles: { fillColor: [31, 41, 55] },
+        theme: 'striped',
+        styles: { font: 'Inter' }
+      });
+      doc.save(`${clientName}_Report.pdf`);
+    };
+
+  </script>
+</body>
+</html>
