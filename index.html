@@ -252,10 +252,20 @@
             event.waitUntil(
               caches.open(CACHE_NAME)
                 .then((cache) => {
-                  return cache.addAll(urlsToCache);
-                })
-                .catch((error) => {
-                  console.log('Cache addAll failed:', error);
+                  return Promise.all(
+                    urlsToCache.map(url => {
+                      return fetch(url).then(response => {
+                        if (!response.ok) {
+                          console.error('Failed to fetch and cache:', url, 'Status:', response.status);
+                          return new Response(new Blob(), {status: 404, statusText: 'Not Found'});
+                        }
+                        return cache.put(url, response);
+                      }).catch(error => {
+                        console.error('Failed to fetch and cache:', url, error);
+                        return new Response(new Blob(), {status: 500, statusText: 'Server Error'});
+                      });
+                    })
+                  );
                 })
             );
             self.skipWaiting();
@@ -269,7 +279,6 @@
                     return response;
                   }
                   return fetch(event.request).catch(() => {
-                    // Return a fallback for navigation requests when offline
                     if (event.request.mode === 'navigate') {
                       return caches.match('./');
                     }
