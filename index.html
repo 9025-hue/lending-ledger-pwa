@@ -6,11 +6,10 @@
   <title>Lending Ledger</title>
   <!-- PWA meta tags -->
   <meta name="theme-color" content="#1f2937">
-  <!-- PWA Manifest -->
-<link rel="manifest" href="/manifest.json">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<link rel="apple-touch-icon" href="/icons/icon-192x192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lending Ledger">
+  
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Inter font from Google Fonts -->
@@ -37,6 +36,17 @@
       </div>
     </div>
   </nav>
+
+  <!-- PWA Install Button -->
+  <div id="install-banner" class="hidden bg-indigo-600 text-white p-4 text-center">
+    <p class="mb-2">Install Lending Ledger as an app for the best experience!</p>
+    <button id="install-button" class="bg-white text-indigo-600 px-4 py-2 rounded-lg font-semibold hover:bg-gray-100 transition-colors">
+      Install App
+    </button>
+    <button id="dismiss-install" class="ml-2 text-indigo-200 hover:text-white transition-colors">
+      Maybe later
+    </button>
+  </div>
 
   <!-- Login/Auth Page -->
   <div id="login-page" class="flex-grow flex items-center justify-center p-4">
@@ -185,16 +195,48 @@
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // PWA Service Worker registration
-    // This script now directly registers the service worker.
+    // PWA Service Worker registration with inline manifest
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
+        // Create manifest dynamically
+        const manifest = {
+          name: "Lending Ledger",
+          short_name: "LendingLedger",
+          description: "Professional loan management application",
+          start_url: "./",
+          display: "standalone",
+          background_color: "#1f2937",
+          theme_color: "#1f2937",
+          orientation: "portrait-primary",
+          categories: ["business", "finance", "productivity"],
+          icons: [
+            {
+              src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' fill='%231f2937'/%3E%3Cpath d='M48 72h96v8H48zm0 16h96v8H48zm0 16h64v8H48z' fill='%23fff'/%3E%3C/svg%3E",
+              sizes: "192x192",
+              type: "image/svg+xml"
+            },
+            {
+              src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' fill='%231f2937'/%3E%3Cpath d='M128 192h256v21.33H128zm0 42.67h256v21.33H128zm0 42.67h170.67v21.33H128z' fill='%23fff'/%3E%3C/svg%3E",
+              sizes: "512x512",
+              type: "image/svg+xml"
+            }
+          ]
+        };
+
+        // Create and register manifest blob
+        const manifestBlob = new Blob([JSON.stringify(manifest)], { type: 'application/json' });
+        const manifestUrl = URL.createObjectURL(manifestBlob);
+        
+        const link = document.createElement('link');
+        link.rel = 'manifest';
+        link.href = manifestUrl;
+        document.head.appendChild(link);
+
+        // Service worker script
         const swScript = `
-          const CACHE_NAME = 'lending-ledger-cache-v2';
+          const CACHE_NAME = 'lending-ledger-cache-v3';
           const urlsToCache = [
             './',
-            './index.html',
-            './manifest.json',
             'https://cdn.tailwindcss.com',
             'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
             'https://fonts.gstatic.com',
@@ -211,14 +253,26 @@
                 .then((cache) => {
                   return cache.addAll(urlsToCache);
                 })
+                .catch((error) => {
+                  console.log('Cache addAll failed:', error);
+                })
             );
+            self.skipWaiting();
           });
 
           self.addEventListener('fetch', (event) => {
             event.respondWith(
               caches.match(event.request)
                 .then((response) => {
-                  return response || fetch(event.request);
+                  if (response) {
+                    return response;
+                  }
+                  return fetch(event.request).catch(() => {
+                    // Return a fallback for navigation requests when offline
+                    if (event.request.mode === 'navigate') {
+                      return caches.match('./');
+                    }
+                  });
                 })
             );
           });
@@ -236,17 +290,17 @@
                 );
               })
             );
+            self.clients.claim();
           });
         `;
+
         const swBlob = new Blob([swScript], { type: 'application/javascript' });
         const swUrl = URL.createObjectURL(swBlob);
 
         navigator.serviceWorker.register(swUrl)
           .then(function(registration) {
             console.log('ServiceWorker registration successful with scope: ', registration.scope);
-            if (navigator.serviceWorker.controller) {
-              localStorage.setItem('pwaStatus', 'PWA is active and ready for offline use.');
-            }
+            localStorage.setItem('pwaStatus', 'PWA is active and ready for offline use.');
           })
           .catch(function(err) {
             console.log('ServiceWorker registration failed: ', err);
@@ -415,7 +469,6 @@
             showMessage('Biometric Not Enabled', 'Please sign in with your email and password first, then enable biometric login from the dashboard.');
         }
     };
-
 
     // Firebase Initialization and Authentication
     window.addEventListener('load', async () => {
@@ -965,39 +1018,73 @@
 
   </script>
   <script>
-  let deferredPrompt;
+    // PWA Install Prompt Handler
+    let deferredPrompt;
 
-window.addEventListener('beforeinstallprompt', (e) => {
-  // Prevent the mini-infobar from appearing on mobile
-  e.preventDefault();
-  // Stash the event so it can be triggered later
-  deferredPrompt = e;
-  // Show the install button if it exists
-  const installButton = document.getElementById('install-button');
-  if (installButton) {
-    installButton.classList.remove('hidden');
-    installButton.onclick = async () => {
-      deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
-      if (choiceResult.outcome === 'accepted') {
-        console.log('User accepted the install prompt');
-        installButton.classList.add('hidden');
-      } else {
-        console.log('User dismissed the install prompt');
+    window.addEventListener('beforeinstallprompt', (e) => {
+      // Prevent the mini-infobar from appearing on mobile
+      e.preventDefault();
+      // Stash the event so it can be triggered later
+      deferredPrompt = e;
+      
+      // Show the install banner
+      const installBanner = document.getElementById('install-banner');
+      const installButton = document.getElementById('install-button');
+      const dismissButton = document.getElementById('dismiss-install');
+      
+      if (installBanner && !localStorage.getItem('installDismissed')) {
+        installBanner.classList.remove('hidden');
+        
+        installButton.onclick = async () => {
+          deferredPrompt.prompt();
+          const choiceResult = await deferredPrompt.userChoice;
+          if (choiceResult.outcome === 'accepted') {
+            console.log('User accepted the install prompt');
+            installBanner.classList.add('hidden');
+          } else {
+            console.log('User dismissed the install prompt');
+          }
+          deferredPrompt = null;
+        };
+        
+        dismissButton.onclick = () => {
+          installBanner.classList.add('hidden');
+          localStorage.setItem('installDismissed', 'true');
+        };
       }
-      deferredPrompt = null;
-    };
-  }
-});
+    });
 
-// Hide the install button after app is installed
-window.addEventListener('appinstalled', () => {
-  console.log('PWA was installed');
-  const installButton = document.getElementById('install-button');
-  if (installButton) {
-    installButton.classList.add('hidden');
-  }
-});
+    // Hide the install banner after app is installed
+    window.addEventListener('appinstalled', () => {
+      console.log('PWA was installed');
+      const installBanner = document.getElementById('install-banner');
+      if (installBanner) {
+        installBanner.classList.add('hidden');
+      }
+      localStorage.setItem('pwaInstalled', 'true');
+    });
+
+    // Check if PWA is already installed and hide banner
+    if (localStorage.getItem('pwaInstalled') || localStorage.getItem('installDismissed')) {
+      const installBanner = document.getElementById('install-banner');
+      if (installBanner) {
+        installBanner.classList.add('hidden');
+      }
+    }
+
+    // Enhanced PWA detection
+    function isPWAInstalled() {
+      return window.matchMedia('(display-mode: standalone)').matches || 
+             window.navigator.standalone === true || 
+             localStorage.getItem('pwaInstalled') === 'true';
+    }
+
+    // Update PWA status on load
+    window.addEventListener('load', () => {
+      if (isPWAInstalled()) {
+        localStorage.setItem('pwaStatus', 'PWA is installed and running in standalone mode.');
+      }
+    });
   </script>
 </body>
 </html>
