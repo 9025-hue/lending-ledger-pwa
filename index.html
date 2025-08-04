@@ -180,80 +180,65 @@
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp, getDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // PWA Manifest and Service Worker registration
+    // PWA Service Worker registration
+    // This script now directly registers the service worker.
     if ('serviceWorker' in navigator) {
-      const manifestData = {
-        name: 'Lending Ledger',
-        short_name: 'LendingLedger',
-        description: 'Manage your lending and payable accounts.',
-        start_url: './',
-        display: 'standalone',
-        background_color: '#ffffff',
-        theme_color: '#1f2937',
-        icons: [
-          {
-            src: 'https://placehold.co/192x192/000000/FFFFFF?text=LL',
-            sizes: '192x192',
-            type: 'image/png'
-          },
-          {
-            src: 'https://placehold.co/512x512/000000/FFFFFF?text=LL',
-            sizes: '512x512',
-            type: 'image/png'
-          }
-        ]
-      };
-      const manifestBlob = new Blob([JSON.stringify(manifestData)], { type: 'application/json' });
-      const manifestUrl = URL.createObjectURL(manifestBlob);
+      window.addEventListener('load', () => {
+        const swScript = `
+          const CACHE_NAME = 'lending-ledger-cache-v1';
+          const urlsToCache = [
+            './',
+            './index.html',
+            'https://cdn.tailwindcss.com',
+            'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
+            'https://fonts.gstatic.com',
+            'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+            'https://unpkg.com/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.js',
+            'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
+            'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
+            'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js',
+          ];
 
-      const link = document.createElement('link');
-      link.rel = 'manifest';
-      link.href = manifestUrl;
-      document.head.appendChild(link);
+          self.addEventListener('install', (event) => {
+            console.log('[Service Worker] Installing...');
+            event.waitUntil(
+              caches.open(CACHE_NAME)
+                .then((cache) => {
+                  console.log('[Service Worker] Caching all content');
+                  return cache.addAll(urlsToCache);
+                })
+            );
+          });
 
-      const serviceWorkerScript = `
-        const CACHE_NAME = 'lending-ledger-cache-v1';
-        const urlsToCache = [
-          './',
-          'https://cdn.tailwindcss.com',
-          'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
-          'https://fonts.gstatic.com',
-          'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
-          'https://unpkg.com/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.js',
-          'https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js',
-          'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js',
-          'https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js',
-        ];
+          self.addEventListener('fetch', (event) => {
+            event.respondWith(
+              caches.match(event.request)
+                .then((response) => {
+                  if (response) {
+                    return response;
+                  }
+                  return fetch(event.request);
+                })
+            );
+          });
+        `;
+        const swBlob = new Blob([swScript], { type: 'application/javascript' });
+        const swUrl = URL.createObjectURL(swBlob);
 
-        self.addEventListener('install', (event) => {
-          event.waitUntil(
-            caches.open(CACHE_NAME)
-              .then((cache) => {
-                return cache.addAll(urlsToCache);
-              })
-          );
-        });
-
-        self.addEventListener('fetch', (event) => {
-          event.respondWith(
-            caches.match(event.request)
-              .then((response) => {
-                if (response) {
-                  return response;
-                }
-                return fetch(event.request);
-              })
-          );
-        });
-      `;
-      const swBlob = new Blob([serviceWorkerScript], { type: 'application/javascript' });
-      const swUrl = URL.createObjectURL(swBlob);
-
-      navigator.serviceWorker.register(swUrl).then(function(registration) {
-        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-      }).catch(function(err) {
-        console.log('ServiceWorker registration failed: ', err);
+        navigator.serviceWorker.register(swUrl)
+          .then(function(registration) {
+            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+            if (navigator.serviceWorker.controller) {
+              localStorage.setItem('pwaStatus', 'PWA is active and ready for offline use.');
+            }
+          })
+          .catch(function(err) {
+            console.log('ServiceWorker registration failed: ', err);
+            localStorage.setItem('pwaStatus', 'PWA registration failed. Check the console for errors.');
+          });
       });
+    } else {
+      localStorage.setItem('pwaStatus', 'Your browser does not support Service Workers.');
     }
 
     // Global state management
@@ -389,11 +374,9 @@
     
     // Function to simulate biometric registration
     window.enableBiometricLogin = () => {
-      // In a real app, this would initiate a WebAuthn registration flow
-      // A server would generate a challenge and the client's WebAuthn API
-      // would interact with the device's biometric sensor.
+      // NOTE: This is a client-side simulation. A real implementation would involve a backend server
+      // and a WebAuthn API call with a secure challenge.
       try {
-        // Simulate a successful registration
         localStorage.setItem('isBiometricRegistered', 'true');
         showMessage('Biometric Login Enabled', 'You have successfully enabled biometric login for this device. The next time you log in, you can use the biometric button.');
         renderApp(); // Rerender to update the dashboard button
@@ -406,15 +389,12 @@
     // Function to simulate biometric sign-in
     window.signInWithBiometrics = () => {
         if (localStorage.getItem('isBiometricRegistered')) {
-            // In a real app, this would initiate a WebAuthn authentication flow.
-            // A server would provide a challenge, and the WebAuthn API would
-            // verify the user's biometric scan against the stored credential.
+            // NOTE: This is a client-side simulation. A real implementation would involve a backend server
+            // and a WebAuthn API call to verify the user's biometric scan.
             showMessage('Biometric Sign-in', 'Simulating a successful biometric authentication...');
-            // Since we don't have a real server, we simulate a successful login by refreshing the page
-            // to show the logged-in state.
-            setTimeout(() => {
-                window.location.reload(); 
-            }, 1000);
+            
+            // To simulate a real login, we redirect to the main page.
+            window.location.reload(); 
         } else {
             showMessage('Biometric Not Enabled', 'Please sign in with your email and password first, then enable biometric login from the dashboard.');
         }
@@ -553,6 +533,7 @@
       const totalPaidPayable = state.payables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
       const profit = totalPaidReceivable - totalPaidPayable;
       const isBiometricEnabled = localStorage.getItem('isBiometricRegistered');
+      const pwaStatus = localStorage.getItem('pwaStatus') || 'Loading PWA status...';
 
       return `
         <div class="p-8">
@@ -560,6 +541,7 @@
           <div class="bg-gray-100 p-4 rounded-lg shadow-inner mb-6">
             <p class="text-gray-600">Welcome, <span class="font-semibold">${state.displayName || 'Guest'}</span>!</p>
             <p class="text-gray-600 mt-2">Your User ID: <span class="font-mono break-all text-sm">${state.userId}</span></p>
+            <p class="text-gray-600 mt-2">PWA Status: <span class="font-semibold text-sm">${pwaStatus}</span></p>
           </div>
           <div class="flex justify-start mb-6">
             <button onclick="enableBiometricLogin()" class="${isBiometricEnabled ? 'bg-gray-500 cursor-not-allowed' : 'bg-purple-600 hover:bg-purple-700'} text-white px-6 py-3 rounded-full shadow-lg transition-colors" ${isBiometricEnabled ? 'disabled' : ''}>
