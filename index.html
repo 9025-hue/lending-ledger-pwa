@@ -239,7 +239,7 @@
   </div>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://unpkg.com/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
@@ -377,833 +377,261 @@
       openModal('confirm-modal');
     };
 
-    // Toggles between login and register views on the auth page
-    window.setAuthMode = (mode) => {
-      state.isRegisterMode = (mode === 'register');
-      const title = document.getElementById('auth-title');
-      const message = document.getElementById('auth-message');
-      const button = document.getElementById('email-auth-button');
-      const nameInput = document.getElementById('display-name-input');
-      const forgotPasswordLink = document.getElementById('forgot-password-link');
-      const loginTab = document.getElementById('login-tab');
-      const registerTab = document.getElementById('register-tab');
-      const errorDiv = document.getElementById('auth-error-message');
-      
-      errorDiv.classList.add('hidden');
-      errorDiv.textContent = '';
-
-      if (state.isRegisterMode) {
-        title.textContent = 'Register for Lending Ledger';
-        message.textContent = 'Create an account with your email and password.';
-        button.textContent = 'Register';
-        nameInput.classList.remove('hidden');
-        nameInput.disabled = false;
-        nameInput.required = true;
-        forgotPasswordLink.classList.add('hidden');
-        loginTab.classList.remove('bg-indigo-600', 'text-white');
-        loginTab.classList.add('text-gray-500', 'hover:bg-gray-200');
-        registerTab.classList.add('bg-indigo-600', 'text-white');
-        registerTab.classList.remove('text-gray-500', 'hover:bg-gray-200');
-      } else {
-        title.textContent = 'Log In to Lending Ledger';
-        message.textContent = 'Please sign in to continue.';
-        button.textContent = 'Log In';
-        nameInput.classList.add('hidden');
-        nameInput.disabled = true;
-        nameInput.required = false;
-        forgotPasswordLink.classList.remove('hidden');
-        registerTab.classList.remove('bg-indigo-600', 'text-white');
-        registerTab.classList.add('text-gray-500', 'hover:bg-gray-200');
-        loginTab.classList.add('bg-indigo-600', 'text-white');
-        loginTab.classList.remove('text-gray-500', 'hover:bg-gray-200');
-      }
-    };
-
-    // Handles authentication errors
-    const handleAuthError = (error) => {
-        const errorDiv = document.getElementById('auth-error-message');
-        errorDiv.textContent = error.message;
-        errorDiv.classList.remove('hidden');
-        console.error("Authentication Error:", error);
-    };
-
-    // Handle Forgot Password
-    window.handleForgotPassword = async () => {
-        const email = document.getElementById('email-input').value;
-        if (!email) {
-            handleAuthError({ message: "Please enter your email address to reset your password." });
-            return;
-        }
-
-        try {
-            await sendPasswordResetEmail(state.auth, email);
-            showMessage("Password Reset", `A password reset link has been sent to ${email}. Please check your inbox.`);
-        } catch (error) {
-            handleAuthError(error);
-        }
-    };
-
-    // Sign out user
-    window.signOutUser = async () => {
+    // PDF Generation Functions
+    window.downloadClientReport = async (clientName) => {
       try {
-        if (state.auth) {
-          await signOut(state.auth);
-          state.userId = null;
-          state.displayName = null;
-          state.isAuthReady = false;
-          state.receivables = [];
-          state.payables = [];
-          state.clients = [];
-          renderApp(); // Clear content and show login page
-        }
-      } catch (error) {
-        console.error("Error signing out:", error);
-        showMessage("Sign Out Error", "Failed to sign out. Please try again.");
-      }
-    };
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
 
-    // Start Firestore listeners for receivables and payables
-    const startListeners = () => {
-      if (!state.db || !state.userId || !state.appId) {
-        console.error("startListeners called without a valid user ID, app ID, or database instance.");
-        return;
-      }
-      
-      console.log(`Starting Firestore listeners for user ID: ${state.userId}, App ID: ${state.appId}`);
-      const receivablesPath = `artifacts/${state.appId}/users/${state.userId}/receivables`;
-      const payablesPath = `artifacts/${state.appId}/users/${state.userId}/payables`;
-      const paymentsPath = `artifacts/${state.appId}/users/${state.userId}/payments`;
+        // Title
+        doc.setFontSize(20);
+        doc.text(`Client Report: ${clientName}`, 14, 22);
+        
+        // Date
+        doc.setFontSize(12);
+        doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 32);
 
-      onSnapshot(collection(state.db, receivablesPath), (snapshot) => {
-        state.receivables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        const uniqueClients = [...new Set(state.receivables.map(item => item.borrowerName))]
-                                .filter(name => name)
-                                .map(name => ({ name }));
-        state.clients = uniqueClients;
-        renderApp();
-      }, (error) => console.error("Error fetching receivables:", error));
+        const clientLoans = state.receivables.filter(loan => loan.borrowerName === clientName);
+        const totalLoanAmount = clientLoans.reduce((sum, loan) => sum + (loan.originalAmount || loan.amount || 0), 0);
+        const totalOutstandingBalance = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
+        const totalPaid = clientLoans.reduce((sum, loan) => sum + (loan.totalPaidAmount || 0), 0);
 
-      onSnapshot(collection(state.db, payablesPath), (snapshot) => {
-        state.payables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        renderApp();
-      }, (error) => console.error("Error fetching payables:", error));
-    };
+        // Summary
+        doc.setFontSize(14);
+        doc.text('Summary:', 14, 50);
+        doc.setFontSize(12);
+        doc.text(`Total Loaned: R${totalLoanAmount.toFixed(2)}`, 14, 60);
+        doc.text(`Total Outstanding: R${totalOutstandingBalance.toFixed(2)}`, 14, 70);
+        doc.text(`Total Paid: R${totalPaid.toFixed(2)}`, 14, 80);
 
-    // Load payment history for a client
-    const loadPaymentHistory = async (clientName) => {
-      const paymentHistoryTable = document.getElementById('payment-history');
-      if (!paymentHistoryTable) return;
+        // Loans table
+        const tableData = clientLoans.map(loan => [
+          formatDate(loan.createdAt),
+          `R${(loan.originalAmount || loan.amount || 0).toFixed(2)}`,
+          `R${(loan.isPaid ? 0 : calculateCurrentBalance(loan)).toFixed(2)}`,
+          `${((loan.interestRate || 0) * 100).toFixed(1)}%`,
+          loan.isPaid ? 'Paid' : 'Unpaid'
+        ]);
 
-      paymentHistoryTable.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Loading payment history...</td></tr>';
+        doc.autoTable({
+          head: [['Date', 'Original Amount', 'Current Balance', 'Interest Rate', 'Status']],
+          body: tableData,
+          startY: 90,
+          styles: { fontSize: 10 },
+          headStyles: { fillColor: [59, 130, 246] }
+        });
 
-      try {
+        // Payment History
         const paymentsQuery = query(
           collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
           where('clientName', '==', clientName)
         );
 
         const querySnapshot = await getDocs(paymentsQuery);
-        let payments = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
+        const payments = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
 
-        payments.sort((a, b) => {
-          const dateA = a.date.toDate ? a.date.toDate() : new Date(a.date.seconds * 1000);
-          const dateB = b.date.toDate ? b.date.toDate() : new Date(b.date.seconds * 1000);
-          return dateB - dateA;
+        if (payments.length > 0) {
+          payments.sort((a, b) => {
+            const dateA = a.date.toDate ? a.date.toDate() : new Date(a.date.seconds * 1000);
+            const dateB = b.date.toDate ? b.date.toDate() : new Date(b.date.seconds * 1000);
+            return dateB - dateA;
+          });
+
+          const paymentTableData = payments.map(payment => [
+            formatDate(payment.date),
+            `R${payment.amount.toFixed(2)}`,
+            payment.method.replace('_', ' ').toUpperCase(),
+            payment.notes || '-'
+          ]);
+
+          const finalY = doc.lastAutoTable.finalY || 90;
+          doc.setFontSize(14);
+          doc.text('Payment History:', 14, finalY + 20);
+
+          doc.autoTable({
+            head: [['Date', 'Amount', 'Method', 'Notes']],
+            body: paymentTableData,
+            startY: finalY + 30,
+            styles: { fontSize: 10 },
+            headStyles: { fillColor: [34, 197, 94] }
+          });
+        }
+
+        doc.save(`${clientName}_Report.pdf`);
+        showMessage('Success', 'PDF report downloaded successfully!');
+      } catch (error) {
+        console.error('Error generating PDF:', error);
+        showMessage('Error', 'Failed to generate PDF report.');
+      }
+    };
+
+    window.downloadAllReports = async () => {
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // Title
+        doc.setFontSize(20);
+        doc.text('All Clients Report', 14, 22);
+        
+        // Date
+        doc.setFontSize(12);
+        doc.text(`Generated: ${new Date().toLocaleDateString()}`, 14, 32);
+
+        // Overall Summary
+        const totalReceivable = state.receivables.filter(t => !t.isPaid).reduce((sum, t) => sum + calculateCurrentBalance(t), 0);
+        const totalLoanAmount = state.receivables.reduce((sum, t) => sum + (t.originalAmount || t.amount || 0), 0);
+        const totalPaid = state.receivables.reduce((sum, t) => sum + (t.totalPaidAmount || 0), 0);
+
+        doc.setFontSize(14);
+        doc.text('Overall Summary:', 14, 50);
+        doc.setFontSize(12);
+        doc.text(`Total Loaned: R${totalLoanAmount.toFixed(2)}`, 14, 60);
+        doc.text(`Total Outstanding: R${totalReceivable.toFixed(2)}`, 14, 70);
+        doc.text(`Total Paid: R${totalPaid.toFixed(2)}`, 14, 80);
+
+        // Client summary table
+        const clientSummaryData = state.clients.map(client => {
+          const clientLoans = state.receivables.filter(loan => loan.borrowerName === client.name);
+          const clientTotal = clientLoans.reduce((sum, loan) => sum + (loan.originalAmount || loan.amount || 0), 0);
+          const clientOutstanding = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
+          const clientPaid = clientLoans.reduce((sum, loan) => sum + (loan.totalPaidAmount || 0), 0);
+
+          return [
+            client.name,
+            `R${clientTotal.toFixed(2)}`,
+            `R${clientOutstanding.toFixed(2)}`,
+            `R${clientPaid.toFixed(2)}`,
+            clientLoans.length.toString()
+          ];
         });
 
-        if (payments.length === 0) {
-          paymentHistoryTable.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No payment history found</td></tr>';
+        doc.autoTable({
+          head: [['Client', 'Total Loaned', 'Outstanding', 'Paid', 'Loans Count']],
+          body: clientSummaryData,
+          startY: 90,
+          styles: { fontSize: 10 },
+          headStyles: { fillColor: [59, 130, 246] }
+        });
+
+        doc.save('All_Clients_Report.pdf');
+        showMessage('Success', 'All clients PDF report downloaded successfully!');
+      } catch (error) {
+        console.error('Error generating all clients PDF:', error);
+        showMessage('Error', 'Failed to generate all clients PDF report.');
+      }
+    };
+
+    window.generatePaymentReceipt = async (paymentId) => {
+      try {
+        const { jsPDF } = window.jspdf;
+        
+        // Get payment data
+        const paymentDoc = await getDoc(doc(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`, paymentId));
+        if (!paymentDoc.exists()) {
+          showMessage('Error', 'Payment not found.');
           return;
         }
 
-        paymentHistoryTable.innerHTML = payments.map(payment => {
-          return `
-            <tr class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(payment.date)}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${payment.amount.toFixed(2)}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${payment.method.replace('_', ' ').toUpperCase()}</td>
-              <td class="px-6 py-4 text-sm text-gray-500">${payment.notes || '-'}</td>
-              <td class="px-6 py-4 text-right text-sm">
-                <button onclick="generatePaymentReceipt('${payment.id}')" class="text-indigo-600 hover:text-indigo-900 transition-colors" title="Download Receipt">
-                  Receipt
-                </button>
-              </td>
-            </tr>
-          `;
-        }).join('');
+        const payment = paymentDoc.data();
+        const doc_pdf = new jsPDF();
+
+        // Title
+        doc_pdf.setFontSize(20);
+        doc_pdf.text('Payment Receipt', 14, 22);
+        
+        // Receipt details
+        doc_pdf.setFontSize(12);
+        doc_pdf.text(`Receipt ID: ${paymentId}`, 14, 40);
+        doc_pdf.text(`Date: ${formatDate(payment.date)}`, 14, 50);
+        doc_pdf.text(`Client: ${payment.clientName}`, 14, 60);
+        doc_pdf.text(`Amount: R${payment.amount.toFixed(2)}`, 14, 70);
+        doc_pdf.text(`Payment Method: ${payment.method.replace('_', ' ').toUpperCase()}`, 14, 80);
+        
+        if (payment.notes) {
+          doc_pdf.text(`Notes: ${payment.notes}`, 14, 90);
+        }
+
+        // Footer
+        doc_pdf.text('Thank you for your payment!', 14, 120);
+        doc_pdf.text(`Generated by: ${state.displayName || 'Lending Ledger'}`, 14, 130);
+
+        doc_pdf.save(`Payment_Receipt_${paymentId}.pdf`);
+        showMessage('Success', 'Payment receipt downloaded successfully!');
       } catch (error) {
-        console.error("Error loading payment history:", error);
-        paymentHistoryTable.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Error loading payment history</td></tr>';
+        console.error('Error generating payment receipt:', error);
+        showMessage('Error', 'Failed to generate payment receipt.');
       }
     };
 
-    // Update changeView to load payment history when viewing client report
-    window.changeView = (viewName, clientName = null) => {
-      state.activeView = viewName;
-      state.currentClientName = clientName;
-      renderApp();
-
-      if (viewName === 'clientReport' && clientName) {
-        setTimeout(() => loadPaymentHistory(clientName), 100);
-      }
-    };
-
-    const renderDashboard = () => {
-      const totalReceivable = state.receivables.filter(t => !t.isPaid).reduce((sum, t) => sum + calculateCurrentBalance(t), 0);
-      const totalPayable = state.payables.filter(t => !t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
-      const totalPaidReceivable = state.receivables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.totalPaidAmount || 0), 0);
-      const totalPaidPayable = state.payables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
-
-      const totalInterestProfit = state.receivables.filter(t => t.isPaid).reduce((sum, t) => {
-        const originalAmount = t.originalAmount || t.amount || 0;
-        const paidAmount = t.totalPaidAmount || 0;
-        if (paidAmount > originalAmount) {
-          return sum + (paidAmount - originalAmount);
-        }
-        return sum;
-      }, 0);
-
-      return `
-        <div class="p-8">
-          <h2 class="text-3xl font-bold mb-6 text-gray-800">Dashboard</h2>
-          <div class="bg-gray-100 p-4 rounded-lg shadow-inner mb-6">
-            <p class="text-gray-600">Welcome, <span class="font-semibold">${state.displayName || 'Guest'}</span>!</p>
-            <p class="text-gray-600 text-sm">User ID: <span class="font-mono text-xs">${state.userId}</span></p>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            ${renderCard("Total Accounts Receivable", `R${totalReceivable.toFixed(2)}`, "bg-blue-500")}
-            ${renderCard("Total Accounts Payable", `R${totalPayable.toFixed(2)}`, "bg-red-500")}
-            ${renderCard("Total Paid (Receivable)", `R${totalPaidReceivable.toFixed(2)}`, "bg-green-500")}
-            ${renderCard("Total Interest Profit", `R${totalInterestProfit.toFixed(2)}`, "bg-purple-600")}
-          </div>
-          <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <h3 class="text-2xl font-bold text-gray-800 mb-4">Financial Summary</h3>
-            <p class="text-xl">
-              Total Interest Profit: <span class="font-bold ${totalInterestProfit >= 0 ? 'text-green-600' : 'text-red-600'}">R${totalInterestProfit.toFixed(2)}</span>
-            </p>
-          </div>
-        </div>
-      `;
-    };
-
-    const renderCard = (title, value, color) => `
-      <div class="p-6 rounded-lg shadow-lg text-white ${color}">
-        <h3 class="text-lg font-semibold">${title}</h3>
-        <p class="text-4xl font-bold mt-2">${value}</p>
-      </div>
-    `;
-
-    const renderClientsView = () => {
-      const clientsList = state.clients.length > 0 ?
-        state.clients.map((client) => `
-          <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${client.name}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-              <button onclick="changeView('clientReport', '${client.name}')" class="text-indigo-600 hover:text-indigo-900 transition-colors">View Report</button>
-              <button onclick="deleteClientConfirm('${client.name}')" class="ml-4 text-red-600 hover:text-red-900 transition-colors">Delete Client</button>
-            </td>
-          </tr>
-        `).join('') :
-        `<tr><td colspan="2" class="p-4 text-center text-gray-500">No clients found. Add a new loan to get started.</td></tr>`;
-
-      return `
-        <div class="p-8">
-          <div class="flex justify-between items-center mb-6">
-            <h2 class="text-3xl font-bold text-gray-800">Your Clients</h2>
-            <div class="flex space-x-4">
-              <button onclick="downloadAllReports()" class="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-green-700 transition-colors">
-                Download All Reports (PDF)
-              </button>
-              <button onclick="openLoanModal()" class="bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors">
-                Add New Loan
-              </button>
-            </div>
-          </div>
-          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client Name</th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                ${clientsList}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-    };
-
-    const renderClientReportView = () => {
-      const clientLoans = state.receivables.filter(loan => loan.borrowerName === state.currentClientName);
-      const totalLoanAmount = clientLoans.reduce((sum, loan) => sum + (loan.originalAmount || loan.amount || 0), 0);
-      const totalOutstandingBalance = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
-
-      const loansList = clientLoans.length > 0 ?
-        clientLoans.map((loan) => `
-          <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${formatDate(loan.createdAt)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${(loan.originalAmount || loan.amount).toFixed(2)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((loan.interestRate || 0) * 100).toFixed(1)}%</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${loan.isPaid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                ${loan.isPaid ? 'Paid' : 'Unpaid'}
-              </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-              <button onclick="openPaymentModal('${loan.id}')" class="bg-green-600 text-white px-4 py-2 rounded-full shadow hover:bg-green-700 transition-colors mr-2">
-                Add Payment
-              </button>
-              <button onclick="openLoanModal('${loan.id}')" class="text-indigo-600 hover:text-indigo-900 mx-2 transition-colors" title="Edit">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                </svg>
-              </button>
-              <button onclick="deleteTransaction('${loan.id}', 'receivable')" class="text-red-600 hover:text-red-900 mx-2 transition-colors" title="Delete Loan">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
-                </svg>
-              </button>
-            </td>
-          </tr>
-        `).join('') :
-        `<tr><td colspan="6" class="p-4 text-center text-gray-500">This client has no loans.</td></tr>`;
-
-      const paymentHistory = `
-        <div class="mt-8">
-          <h3 class="text-xl font-bold text-gray-800 mb-4">Payment History</h3>
-          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                  <th class="px-6 py-3 text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200" id="payment-history">
-                </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-
-      return `
-        <div class="p-8">
-          <div class="flex justify-between items-center mb-6">
-            <h2 class="text-3xl font-bold text-gray-800">Client Report: ${state.currentClientName}</h2>
-            <button onclick="downloadClientReport('${state.currentClientName}')" class="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-green-700 transition-colors">
-              Download PDF Report
-            </button>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            ${renderCard("Total Loaned Amount", `R${totalLoanAmount.toFixed(2)}`, "bg-gray-700")}
-            ${renderCard("Total Outstanding Balance", `R${totalOutstandingBalance.toFixed(2)}`, "bg-yellow-600")}
-          </div>
-          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loan Date</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Amount</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Balance</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest Rate</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                ${loansList}
-              </tbody>
-            </table>
-          </div>
-          ${paymentHistory}
-        </div>
-      `;
-    };
-
-    const renderPayablesView = () => {
-      const payablesList = state.payables.length > 0 ?
-        state.payables.map((transaction) => `
-          <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${transaction.lenderName}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${transaction.amount ? transaction.amount.toFixed(2) : '0.00'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(transaction.dueDate)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${transaction.isPaid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                ${transaction.isPaid ? 'Paid' : 'Unpaid'}
-              </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-              <button onclick="openPayableModal('${transaction.id}')" class="text-indigo-600 hover:text-indigo-900 mx-2 transition-colors" title="Edit">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                </svg>
-              </button>
-              <button onclick="deleteTransaction('${transaction.id}', 'payable')" class="text-red-600 hover:text-red-900 mx-2 transition-colors" title="Delete">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
-                </svg>
-              </button>
-            </td>
-          </tr>
-        `).join('') :
-        `<tr><td colspan="5" class="p-4 text-center text-gray-500">No payables found. Click "Add New Payable" to get started.</td></tr>`;
-
-      return `
-        <div class="p-8">
-          <div class="flex justify-between items-center mb-6">
-            <h2 class="text-3xl font-bold text-gray-800">Accounts Payable</h2>
-            <button onclick="openPayableModal()" class="bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors">
-              Add New Payable
-            </button>
-          </div>
-          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lender Name</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                ${payablesList}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-    };
-
-    const renderApp = () => {
-      const appContainer = document.getElementById('app-container');
-      const loginPage = document.getElementById('login-page');
-      const mainContent = document.getElementById('main-content');
-      const navbar = document.getElementById('navbar');
-
-      if (!appContainer || !loginPage || !mainContent || !navbar) {
-        console.error("DOM elements for app rendering are not found.");
-        return;
-      }
-
-      if (!state.isAuthReady) {
-        loginPage.classList.remove('hidden');
-        mainContent.classList.add('hidden');
-        navbar.classList.add('hidden');
-        return;
-      }
-
-      loginPage.classList.add('hidden');
-      mainContent.classList.remove('hidden');
-      navbar.classList.remove('hidden');
-
-      switch (state.activeView) {
-        case 'dashboard':
-          appContainer.innerHTML = renderDashboard();
-          break;
-        case 'clients':
-          appContainer.innerHTML = renderClientsView();
-          break;
-        case 'clientReport':
-          appContainer.innerHTML = renderClientReportView();
-          break;
-        case 'payable':
-          appContainer.innerHTML = renderPayablesView();
-          break;
-        default:
-          state.activeView = 'dashboard';
-          appContainer.innerHTML = renderDashboard();
-          break;
-      }
-    };
-
-    // Generic modal open/close functions
-    window.openModal = (modalId) => {
-      const modal = document.getElementById(modalId);
-      if (modal) modal.classList.remove('hidden');
-    };
-
-    window.closeModal = (modalId) => {
-      const modal = document.getElementById(modalId);
-      if (modal) modal.classList.add('hidden');
-    };
-
-    // Open loan/payable modal for adding or editing
-    window.openLoanModal = (transactionId = null) => {
-      const modalTitle = document.getElementById('modal-title');
-      const loanForm = document.getElementById('loan-form');
-      const borrowerNameInput = document.getElementById('borrower-name');
-      const amountInput = document.getElementById('amount');
-      const interestRateInput = document.getElementById('interest-rate');
-      const loanPeriodInput = document.getElementById('loan-period');
-      const dueDateInput = document.getElementById('due-date');
-      const interestRateGroup = document.getElementById('interest-rate-group');
-      const loanPeriodGroup = document.getElementById('loan-period-group');
-
-      if (loanForm) loanForm.reset();
+    // Delete functions
+    window.deleteTransaction = (transactionId, type) => {
+      const isReceivable = type === 'receivable';
+      const confirmMessage = `Are you sure you want to delete this ${isReceivable ? 'loan' : 'payable'}? This action cannot be undone.`;
       
-      const isPayableMode = state.activeView === 'payable';
-      const transactionIdInput = document.getElementById('transaction-id');
-      if (transactionIdInput) transactionIdInput.value = transactionId || '';
-
-      if (modalTitle) {
-        if (isPayableMode) {
-          modalTitle.textContent = transactionId ? 'Edit Payable' : 'Add New Payable';
-        } else {
-          modalTitle.textContent = transactionId ? 'Edit Loan' : 'Add New Loan';
-        }
-      }
-      
-      if (borrowerNameInput) borrowerNameInput.placeholder = isPayableMode ? 'Lender Name' : 'Client Name';
-      
-      if (interestRateGroup) {
-        if (isPayableMode) interestRateGroup.classList.add('hidden');
-        else interestRateGroup.classList.remove('hidden');
-      }
-      if (loanPeriodGroup) {
-        if (isPayableMode) loanPeriodGroup.classList.add('hidden');
-        else loanPeriodGroup.classList.remove('hidden');
-      }
-
-      if (interestRateInput) interestRateInput.required = !isPayableMode;
-      if (loanPeriodInput) loanPeriodInput.required = !isPayableMode;
-
-      if (transactionId) {
-        const transaction = isPayableMode
-          ? state.payables.find(t => t.id === transactionId)
-          : state.receivables.find(t => t.id === transactionId);
-
-        if (transaction) {
-          if (borrowerNameInput) borrowerNameInput.value = isPayableMode ? transaction.lenderName : transaction.borrowerName;
-          if (amountInput) amountInput.value = transaction.amount;
-          if (!isPayableMode) {
-            if (interestRateInput) interestRateInput.value = ((transaction.interestRate || 0) * 100);
-            if (loanPeriodInput) loanPeriodInput.value = transaction.loanPeriod;
-          }
-          if (transaction.dueDate && dueDateInput) {
-            const dueDate = transaction.dueDate.toDate ? transaction.dueDate.toDate() : new Date(transaction.dueDate.seconds * 1000);
-            dueDateInput.value = dueDate.toISOString().split('T')[0];
-          }
-        }
-      }
-      
-      openModal('loan-modal');
-    };
-
-    // Open payable modal (alias for openLoanModal with payable context)
-    window.openPayableModal = (transactionId = null) => {
-      state.activeView = 'payable'; 
-      openLoanModal(transactionId);
-    };
-
-    window.openPaymentModal = (transactionId) => {
-      const transaction = state.receivables.find(t => t.id === transactionId);
-      if (!transaction) {
-        showMessage('Error', 'Loan transaction not found.');
-        return;
-      }
-
-      const currentBalance = calculateCurrentBalance(transaction);
-      const paymentTransactionId = document.getElementById('payment-transaction-id');
-      const paymentClientName = document.getElementById('payment-client-name');
-      const paymentCurrentBalance = document.getElementById('payment-current-balance');
-      const paymentDateInput = document.getElementById('payment-date');
-      const paymentLastPayment = document.getElementById('payment-last-payment');
-      const paymentAmountInput = document.getElementById('payment-amount');
-      const paymentMethodInput = document.getElementById('payment-method');
-      const paymentNotesInput = document.getElementById('payment-notes');
-
-      if (paymentTransactionId) paymentTransactionId.value = transactionId;
-      if (paymentClientName) paymentClientName.textContent = transaction.borrowerName;
-      if (paymentCurrentBalance) paymentCurrentBalance.textContent = `R${currentBalance.toFixed(2)}`;
-
-      const today = new Date().toISOString().split('T')[0];
-      if (paymentDateInput) paymentDateInput.value = today;
-
-      if (paymentLastPayment) {
-        if (transaction.lastPaymentAt) {
-          const lastPaymentDate = formatDate(transaction.lastPaymentAt);
-          const lastPaymentAmount = transaction.lastPaymentAmount ? `R${transaction.lastPaymentAmount.toFixed(2)}` : 'N/A';
-          paymentLastPayment.textContent = `${lastPaymentAmount} on ${lastPaymentDate}`;
-        } else {
-          paymentLastPayment.textContent = 'No payments yet';
-        }
-      }
-
-      if (paymentAmountInput) {
-        paymentAmountInput.value = '';
-        paymentAmountInput.max = currentBalance.toFixed(2);
-      }
-      if (paymentMethodInput) paymentMethodInput.value = 'cash';
-      if (paymentNotesInput) paymentNotesInput.value = '';
-      
-      openModal('payment-modal');
-    };
-
-    document.addEventListener('DOMContentLoaded', () => {
-      // PWA Install Prompt Logic
-      let deferredPrompt;
-      const installPrompt = document.getElementById('install-prompt');
-      const installBtn = document.getElementById('install-btn');
-      const dismissBtn = document.getElementById('dismiss-btn');
-      let installPromptDismissed = false;
-
-      window.addEventListener('beforeinstallprompt', (e) => {
-        e.preventDefault();
-        deferredPrompt = e;
-        setTimeout(() => {
-          if (!installPromptDismissed && installPrompt) {
-            installPrompt.style.display = 'block';
-          }
-        }, 3000);
-      });
-
-      if (installBtn) {
-        installBtn.addEventListener('click', async () => {
-          if (deferredPrompt) {
-            deferredPrompt.prompt();
-            const { outcome } = await deferredPrompt.userChoice;
-            console.log(`User response to the install prompt: ${outcome}`);
-            deferredPrompt = null;
-          }
-          if (installPrompt) installPrompt.style.display = 'none';
-        });
-      }
-
-      if (dismissBtn) {
-        dismissBtn.addEventListener('click', () => {
-          if (installPrompt) installPrompt.style.display = 'none';
-          installPromptDismissed = true;
-        });
-      }
-
-      window.addEventListener('appinstalled', (evt) => {
-        console.log('App was installed successfully');
-        if (installPrompt) installPrompt.style.display = 'none';
-      });
-
-      // Event listener for email/password authentication form
-      const emailAuthForm = document.getElementById('email-auth-form');
-      if (emailAuthForm) {
-        emailAuthForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          const email = document.getElementById('email-input').value;
-          const password = document.getElementById('password-input').value;
-          const displayName = document.getElementById('display-name-input').value;
-          const errorDiv = document.getElementById('auth-error-message');
-          if (errorDiv) {
-            errorDiv.classList.add('hidden');
-            errorDiv.textContent = '';
-          }
-
-          try {
-            if (state.isRegisterMode) {
-              const userCredential = await createUserWithEmailAndPassword(state.auth, email, password);
-              await updateProfile(userCredential.user, { displayName: displayName });
-              showMessage('Registration Successful', 'Your account has been created. Welcome to Lending Ledger!');
-            } else {
-              await signInWithEmailAndPassword(state.auth, email, password);
-              showMessage('Login Successful', 'Welcome back to Lending Ledger!');
-            }
-          } catch (error) {
-            handleAuthError(error);
-          }
-        });
-      }
-
-      // Event listener for payment form submission
-      const paymentForm = document.getElementById('payment-form');
-      if (paymentForm) {
-        paymentForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
+      showConfirm('Delete Transaction', confirmMessage, async () => {
+        try {
+          const collectionPath = `artifacts/${state.appId}/users/${state.userId}/${isReceivable ? 'receivables' : 'payables'}`;
+          await deleteDoc(doc(state.db, collectionPath, transactionId));
           
-          const transactionId = document.getElementById('payment-transaction-id').value;
-          const paymentAmount = parseFloat(document.getElementById('payment-amount').value);
-          const paymentDate = document.getElementById('payment-date').value;
-          const paymentMethod = document.getElementById('payment-method').value;
-          const paymentNotes = document.getElementById('payment-notes').value;
-
-          if (isNaN(paymentAmount) || paymentAmount <= 0) {
-            showMessage('Invalid Amount', 'Please enter a valid payment amount greater than 0.');
-            return;
-          }
-
-          try {
-            const transactionDocRef = doc(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`, transactionId);
-            const transactionDoc = await getDoc(transactionDocRef);
-
-            if (transactionDoc.exists()) {
-              const data = transactionDoc.data();
-              const currentBalance = data.currentBalance || data.amount; 
-
-              if (paymentAmount > currentBalance) {
-                showMessage('Invalid Amount', `Payment amount cannot exceed current balance of R${currentBalance.toFixed(2)}.`);
-                return;
-              }
-
-              const newBalance = currentBalance - paymentAmount;
-              const isPaid = newBalance <= 0.01;
-
-              const currentTotalPaid = data.totalPaidAmount || 0;
-              const newTotalPaid = currentTotalPaid + paymentAmount;
-
-              const paymentData = {
-                amount: paymentAmount,
-                date: new Date(paymentDate),
-                method: paymentMethod,
-                notes: paymentNotes,
-                transactionId: transactionId,
-                clientName: data.borrowerName,
-                userId: state.userId,
-                createdAt: serverTimestamp(),
-              };
-
-              await updateDoc(transactionDocRef, {
-                currentBalance: newBalance,
-                isPaid: isPaid,
-                lastPaymentAt: serverTimestamp(),
-                lastPaymentAmount: paymentAmount,
-                totalPaidAmount: newTotalPaid
-              });
-
-              await addDoc(collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`), paymentData);
-
-              closeModal('payment-modal');
-              showMessage('Success', `Payment of R${paymentAmount.toFixed(2)} recorded successfully.`);
-            } else {
-              showMessage('Error', 'Transaction not found.');
-            }
-          } catch (error) {
-            console.error("Error making payment:", error);
-            showMessage('Error', 'Failed to process payment: ' + error.message);
-          }
-        });
-      }
-
-      // Event listener for loan/payable form submission
-      const loanForm = document.getElementById('loan-form');
-      if (loanForm) {
-        loanForm.addEventListener('submit', async (e) => {
-          e.preventDefault();
-          
-          const form = e.target;
-          const transactionId = form['transaction-id'].value;
-          const borrowerName = form['borrower-name'].value;
-          const amount = parseFloat(form['amount'].value);
-          const dueDate = new Date(form['due-date'].value);
-
-          if (isNaN(amount) || amount <= 0) {
-            showMessage('Invalid Amount', 'Please enter a valid amount greater than 0.');
-            return;
-          }
-
-          const isPayable = state.activeView === 'payable';
-          const collectionPath = `artifacts/${state.appId}/users/${state.userId}/${isPayable ? 'payables' : 'receivables'}`;
-
-          const data = {
-            amount,
-            dueDate,
-            isPaid: false,
-            createdAt: serverTimestamp(),
-          };
-
-          if (isPayable) {
-            data.lenderName = borrowerName;
-          } else {
-            const loanPeriod = parseInt(form['loan-period'].value, 10);
-            const interestRate = parseFloat(form['interest-rate'].value) / 100;
-
-            if (isNaN(loanPeriod) || loanPeriod <= 0) {
-              showMessage('Invalid Loan Period', 'Please enter a valid loan period greater than 0.');
-              return;
-            }
-            if (isNaN(interestRate) || interestRate < 0) {
-              showMessage('Invalid Interest Rate', 'Please enter a valid interest rate (0 or greater).');
-              return;
-            }
-
-            data.borrowerName = borrowerName;
-            data.interestRate = interestRate;
-            data.loanPeriod = loanPeriod;
+          // Also delete related payments if it's a receivable
+          if (isReceivable) {
+            const paymentsQuery = query(
+              collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
+              where('transactionId', '==', transactionId)
+            );
+            const paymentSnapshot = await getDocs(paymentsQuery);
+            const batch = writeBatch(state.db);
             
-            if (!transactionId) {
-                const totalExpectedRepayment = amount * Math.pow(1 + interestRate, loanPeriod);
-                data.currentBalance = totalExpectedRepayment;
-                data.originalAmount = amount;
+            paymentSnapshot.docs.forEach(paymentDoc => {
+              batch.delete(paymentDoc.ref);
+            });
+            
+            if (paymentSnapshot.docs.length > 0) {
+              await batch.commit();
             }
           }
-
-          try {
-            if (transactionId) {
-              const updateData = {
-                amount: data.amount,
-                dueDate: data.dueDate,
-                ...(isPayable ? { lenderName: data.lenderName } : {
-                  borrowerName: data.borrowerName,
-                  interestRate: data.interestRate,
-                  loanPeriod: data.loanPeriod
-                })
-              };
-              await updateDoc(doc(state.db, collectionPath, transactionId), updateData);
-              showMessage('Success', `${isPayable ? 'Payable' : 'Loan'} updated successfully.`);
-            } else {
-              await addDoc(collection(state.db, collectionPath), data);
-              showMessage('Success', `${isPayable ? 'Payable' : 'Loan'} added successfully.`);
-            }
-            closeModal('loan-modal');
-          } catch (error) {
-            console.error("Error submitting form:", error);
-            showMessage('Error', 'Failed to save information: ' + error.message);
-          }
-        });
-      }
-
-      // Initial render call after DOM is ready
-      renderApp();
-    });
-
-    // Firebase Auth State Observer
-    onAuthStateChanged(state.auth, async (user) => {
-      console.log('onAuthStateChanged triggered. User:', user);
-      if (user) {
-        state.userId = user.uid;
-        state.displayName = user.displayName || user.email;
-        state.isAuthReady = true;
-        state.activeView = 'dashboard';
-        console.log('User authenticated. state.isAuthReady:', state.isAuthReady);
-        startListeners();
-        renderApp(); // Re-render after auth state is confirmed and listeners started
-      } else {
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        if (initialAuthToken) {
-            try {
-                console.log('Attempting sign-in with custom token...');
-                await signInWithCustomToken(state.auth, initialAuthToken);
-            } catch (error) {
-                console.error("Error signing in with custom token:", error);
-                const initErrorMessage = document.getElementById('init-error-message');
-                if (initErrorMessage) initErrorMessage.textContent = 'Failed to authenticate. Please try again.';
-                openModal('init-error');
-                state.isAuthReady = true;
-                renderApp();
-            }
-        } else {
-            console.log('No user and no custom token. Rendering login page for explicit authentication.');
-            state.isAuthReady = true;
-            state.userId = null;
-            renderApp(); // Render login page if no auth token or authentication fails
+          
+          showMessage('Success', `${isReceivable ? 'Loan' : 'Payable'} deleted successfully.`);
+        } catch (error) {
+          console.error('Error deleting transaction:', error);
+          showMessage('Error', `Failed to delete ${isReceivable ? 'loan' : 'payable'}.`);
         }
-      }
-    });
+      });
+    };
 
-  </script>
-</body>
-</html>
+    window.deleteClientConfirm = (clientName) => {
+      const clientLoans = state.receivables.filter(loan => loan.borrowerName === clientName);
+      const confirmMessage = `Are you sure you want to delete client "${clientName}" and all ${clientLoans.length} associated loan(s) and payment(s)? This action cannot be undone.`;
+      
+      showConfirm('Delete Client', confirmMessage, async () => {
+        try {
+          const batch = writeBatch(state.db);
+          
+          // Delete all loans for this client
+          clientLoans.forEach(loan => {
+            const loanRef = doc(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`, loan.id);
+            batch.delete(loanRef);
+          });
+          
+          // Delete all payments for this client
+          const paymentsQuery = query(
+            collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
+            where('clientName', '==', clientName)
+          );
+          const paymentSnapshot = await getDocs(paymentsQuery);
+          paymentSnapshot.docs.forEach(paymentDoc => {
+            batch.delete(paymentDoc.ref);
+          });
+          
+          await batch.commit();
+          showMessage('Success', `Client "${clientName}" and all associated data deleted successfully.`);
+          
+          // Navigate back to clients view
+          changeView('clients');
+        } catch (error) {
+          console.error('Error deleting client:', error);
+          showMessage('Error', `Failed to delete client "${clientName}".`);
+        }
+      });
+    };
