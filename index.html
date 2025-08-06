@@ -133,7 +133,7 @@
     </div>
   </div>
 
-  <div id="loan-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
+  <div id="loan-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity50 overflow-y-auto h-full w-full flex items-center justify-center">
     <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
       <div class="flex justify-between items-center mb-4">
         <h3 id="modal-title" class="text-2xl font-bold text-gray-800">Add New Loan</h3>
@@ -334,7 +334,7 @@
     // The firebaseConfig is provided by the environment, no need to hardcode it.
     // Ensure __firebase_config is parsed correctly.
     const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-      apiKey: "YOUR_API_KEY", // Placeholder if running outside Canvas
+      apiKey: "", // Changed to empty string for Canvas to inject the API key
       authDomain: "YOUR_AUTH_DOMAIN",
       projectId: "YOUR_PROJECT_ID",
       storageBucket: "YOUR_STORAGE_BUCKET",
@@ -1420,3 +1420,4 @@
   </script>
 </body>
 </html>
+
