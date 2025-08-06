@@ -313,6 +313,22 @@
       writeBatch // Import writeBatch for atomic operations
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
+    // Expose Firebase Firestore functions globally for inline event handlers
+    window.firebaseFirestore = {
+        doc,
+        collection,
+        getDoc,
+        getDocs,
+        query,
+        where,
+        updateDoc,
+        addDoc,
+        deleteDoc,
+        writeBatch,
+        serverTimestamp
+    };
+
+
     // Global state management
     const state = {
       db: null,
@@ -515,7 +531,7 @@
       const payablesPath = `artifacts/${state.appId}/users/${state.userId}/payables`;
       const paymentsPath = `artifacts/${state.appId}/users/${state.userId}/payments`; // Also for payments
 
-      onSnapshot(collection(state.db, receivablesPath), (snapshot) => {
+      onSnapshot(window.firebaseFirestore.collection(state.db, receivablesPath), (snapshot) => {
         state.receivables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         // Derive unique clients from receivables
         const uniqueClients = [...new Set(state.receivables.map(item => item.borrowerName))]
@@ -525,7 +541,7 @@
         renderApp();
       }, (error) => console.error("Error fetching receivables:", error));
 
-      onSnapshot(collection(state.db, payablesPath), (snapshot) => {
+      onSnapshot(window.firebaseFirestore.collection(state.db, payablesPath), (snapshot) => {
         state.payables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         renderApp();
       }, (error) => console.error("Error fetching payables:", error));
@@ -540,12 +556,12 @@
 
       try {
         // Corrected path for payments
-        const paymentsQuery = query(
-          collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
-          where('clientName', '==', clientName)
+        const paymentsQuery = window.firebaseFirestore.query(
+          window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
+          window.firebaseFirestore.where('clientName', '==', clientName)
         );
 
-        const querySnapshot = await getDocs(paymentsQuery);
+        const querySnapshot = await window.firebaseFirestore.getDocs(paymentsQuery);
         let payments = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
 
         // Client-side sorting by date (descending)
@@ -990,8 +1006,8 @@
 
       try {
         // Corrected path for receivables
-        const transactionDocRef = doc(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`, transactionId);
-        const transactionDoc = await getDoc(transactionDocRef);
+        const transactionDocRef = window.firebaseFirestore.doc(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`, transactionId);
+        const transactionDoc = await window.firebaseFirestore.getDoc(transactionDocRef);
 
         if (transactionDoc.exists()) {
           const data = transactionDoc.data();
@@ -1019,20 +1035,20 @@
             transactionId: transactionId,
             clientName: data.borrowerName,
             userId: state.userId,
-            createdAt: serverTimestamp(),
+            createdAt: window.firebaseFirestore.serverTimestamp(),
           };
 
           // Update transaction document with the new totalPaidAmount and new currentBalance
-          await updateDoc(transactionDocRef, {
+          await window.firebaseFirestore.updateDoc(transactionDocRef, {
             currentBalance: newBalance, // Update the stored currentBalance
             isPaid: isPaid,
-            lastPaymentAt: serverTimestamp(),
+            lastPaymentAt: window.firebaseFirestore.serverTimestamp(),
             lastPaymentAmount: paymentAmount,
             totalPaidAmount: newTotalPaid
           });
 
           // Add payment document - Corrected path
-          await addDoc(collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`), paymentData);
+          await window.firebaseFirestore.addDoc(window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`), paymentData);
 
           closeModal('payment-modal');
           showMessage('Success', `Payment of R${paymentAmount.toFixed(2)} recorded successfully.`);
@@ -1068,7 +1084,7 @@
         amount,
         dueDate,
         isPaid: false, // Default to unpaid
-        createdAt: serverTimestamp(),
+        createdAt: window.firebaseFirestore.serverTimestamp(),
       };
 
       if (isPayable) {
@@ -1125,10 +1141,10 @@
               // as its value is managed by payments after initial creation.
             })
           };
-          await updateDoc(doc(state.db, collectionPath, transactionId), updateData);
+          await window.firebaseFirestore.updateDoc(window.firebaseFirestore.doc(state.db, collectionPath, transactionId), updateData);
           showMessage('Success', `${isPayable ? 'Payable' : 'Loan'} updated successfully.`);
         } else {
-          await addDoc(collection(state.db, collectionPath), data);
+          await window.firebaseFirestore.addDoc(window.firebaseFirestore.collection(state.db, collectionPath), data);
           showMessage('Success', `${isPayable ? 'Payable' : 'Loan'} added successfully.`);
         }
         closeModal('loan-modal');
@@ -1150,10 +1166,10 @@
         const collectionPath = type === 'receivable'
           ? `artifacts/${state.appId}/users/${state.userId}/receivables`
           : `artifacts/${state.appId}/users/${state.userId}/payables`;
-        const docRef = doc(state.db, collectionPath, transactionId);
+        const docRef = window.firebaseFirestore.doc(state.db, collectionPath, transactionId);
 
         try {
-          await deleteDoc(docRef);
+          await window.firebaseFirestore.deleteDoc(docRef);
           showMessage('Success', `${type} deleted successfully.`);
         } catch (error) {
           console.error("Error deleting transaction:", error);
@@ -1171,14 +1187,14 @@
             return;
           }
 
-          const batch = writeBatch(state.db);
+          const batch = window.firebaseFirestore.writeBatch(state.db);
           // Corrected collection paths
-          const receivablesRef = collection(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`);
-          const paymentsRef = collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`);
+          const receivablesRef = window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`);
+          const paymentsRef = window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`);
 
           // Get all loans for the client
-          const loansQuery = query(receivablesRef, where('borrowerName', '==', clientName));
-          const loanSnapshots = await getDocs(loansQuery);
+          const loansQuery = window.firebaseFirestore.query(receivablesRef, window.firebaseFirestore.where('borrowerName', '==', clientName));
+          const loanSnapshots = await window.firebaseFirestore.getDocs(loansQuery);
 
           const loanIdsToDelete = [];
           loanSnapshots.forEach(doc => {
@@ -1189,8 +1205,8 @@
           // Get all payments for the client's loans
           if (loanIdsToDelete.length > 0) {
             // Firestore 'in' query has a limit of 10, so we might need to batch this if many loans
-            const paymentsQuery = query(paymentsRef, where('transactionId', 'in', loanIdsToDelete));
-            const paymentSnapshots = await getDocs(paymentsQuery);
+            const paymentsQuery = window.firebaseFirestore.query(paymentsRef, window.firebaseFirestore.where('transactionId', 'in', loanIdsToDelete));
+            const paymentSnapshots = await window.firebaseFirestore.getDocs(paymentsQuery);
             paymentSnapshots.forEach(doc => {
               batch.delete(doc.ref);
             });
@@ -1221,7 +1237,7 @@
         }
 
         // Corrected path for payments
-        const paymentDoc = await getDoc(doc(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`, paymentId));
+        const paymentDoc = await window.firebaseFirestore.getDoc(window.firebaseFirestore.doc(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`, paymentId));
         if (!paymentDoc.exists()) {
           showMessage('Error', 'Payment not found.');
           return;
@@ -1325,11 +1341,11 @@
       // Fetch payment history for the client - Corrected path
       let payments = [];
       try {
-        const paymentsQuery = query(
-          collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
-          where('clientName', '==', clientName)
+        const paymentsQuery = window.firebaseFirestore.query(
+          window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
+          window.firebaseFirestore.where('clientName', '==', clientName)
         );
-        const querySnapshot = await getDocs(paymentsQuery);
+        const querySnapshot = await window.firebaseFirestore.getDocs(paymentsQuery);
         payments = querySnapshot.docs.map(docSnap => docSnap.data());
         // Client-side sort payments by date descending
         payments.sort((a, b) => {
