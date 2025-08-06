@@ -294,8 +294,7 @@
         signInWithEmailAndPassword,
         sendPasswordResetEmail,
         updateProfile,
-        signInWithCustomToken,
-        signInAnonymously
+        signInWithCustomToken
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore,
@@ -1396,7 +1395,7 @@
         renderApp(); // Explicitly render the app when authenticated
         startListeners(); // Start listening to Firestore data
       } else {
-        // If no user, try to sign in with custom token or anonymously
+        // If no user, try to sign in with custom token
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         if (initialAuthToken) {
             try {
@@ -1411,23 +1410,11 @@
                 renderApp(); // Render login page on auth error
             }
         } else {
-            // If no custom token, sign in anonymously to get a persistent UID for the session
-            try {
-                console.log('No custom token. Attempting anonymous sign-in...');
-                const anonymousUserCredential = await signInAnonymously(state.auth);
-                state.userId = anonymousUserCredential.user.uid;
-                state.displayName = 'Anonymous User';
-                state.isAuthReady = true;
-                console.log('Anonymous user authenticated. state.isAuthReady:', state.isAuthReady, 'userId:', state.userId);
-                renderApp();
-                startListeners();
-            } catch (error) {
-                console.error("Error signing in anonymously:", error);
-                document.getElementById('init-error-message').textContent = 'Failed to sign in anonymously. Please try again.';
-                openModal('init-error');
-                state.isAuthReady = true; // Still set to true to render login page
-                renderApp(); // Render login page on auth error
-            }
+            // No user and no custom token, render login page for explicit login/registration
+            console.log('No user and no custom token. Rendering login page for explicit authentication.');
+            state.isAuthReady = true;
+            state.userId = null; // Ensure userId is null if not authenticated
+            renderApp();
         }
       }
     });
