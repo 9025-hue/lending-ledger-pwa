@@ -732,7 +732,7 @@
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th class="px-6 py-3 text-right text-sm font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200" id="payment-history">
@@ -1209,6 +1209,12 @@
     // Generate PDF receipt for a single payment
     window.generatePaymentReceipt = async (paymentId) => {
       try {
+        // Add a check for Firebase initialization
+        if (!state.db || !state.userId || !state.appId) {
+          showMessage('Error', 'Application not fully initialized. Please try again in a moment.');
+          return;
+        }
+
         if (!window.jspdf || !window.jspdf.jsPDF) {
           showMessage('Error', 'Failed to load PDF library. Please refresh and try again.');
           return;
@@ -1242,7 +1248,7 @@
         doc.save(`Payment_Receipt_${paymentDoc.id}.pdf`);
       } catch (error) {
         console.error("Error generating receipt:", error);
-        showMessage('Error', 'Failed to generate receipt. Please try again: ' + error.message);
+        showMessage('Error', 'Failed to generate receipt: ' + error.message);
       }
     };
 
