@@ -280,7 +280,7 @@
       receivables: [],
       payables: [],
       clients: [], // Clients derived from receivables
-      activeView: 'dashboard',
+      activeView: 'dashboard', // Default to dashboard
       currentClientName: null,
       isRegisterMode: true,
       appId: null, // Add appId to state
@@ -824,6 +824,8 @@
           appContainer.innerHTML = renderPayablesView();
           break;
         default:
+          // Default to dashboard if activeView is not explicitly set or recognized
+          state.activeView = 'dashboard';
           appContainer.innerHTML = renderDashboard();
           break;
       }
@@ -1384,7 +1386,71 @@
       if (installPrompt) installPrompt.style.display = 'none'; // Added null check
     });
 
+    // Handle email/password authentication form submission
+    document.getElementById('email-auth-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('email-input').value;
+      const password = document.getElementById('password-input').value;
+      const displayName = document.getElementById('display-name-input').value;
+      const errorDiv = document.getElementById('auth-error-message');
+      errorDiv.classList.add('hidden');
+      errorDiv.textContent = '';
+
+      try {
+        if (state.isRegisterMode) {
+          const userCredential = await createUserWithEmailAndPassword(state.auth, email, password);
+          await updateProfile(userCredential.user, { displayName: displayName });
+          showMessage('Registration Successful', 'Your account has been created. Welcome to Lending Ledger!');
+        } else {
+          await signInWithEmailAndPassword(state.auth, email, password);
+          showMessage('Login Successful', 'Welcome back to Lending Ledger!');
+        }
+      } catch (error) {
+        handleAuthError(error);
+      }
+    });
+
+
+    // Firebase Auth State Observer
+    onAuthStateChanged(state.auth, async (user) => {
+      console.log('onAuthStateChanged triggered. User:', user);
+      if (user) {
+        state.userId = user.uid;
+        state.displayName = user.displayName || user.email;
+        state.isAuthReady = true;
+        state.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Ensure appId is set
+        state.activeView = 'dashboard'; // Explicitly set to dashboard after successful login
+        console.log('User authenticated. state.isAuthReady:', state.isAuthReady);
+        renderApp(); // Explicitly render the app when authenticated
+        startListeners(); // Start listening to Firestore data
+      } else {
+        // If no user, try to sign in with custom token
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+        if (initialAuthToken) {
+            try {
+                console.log('Attempting sign-in with custom token...');
+                await signInWithCustomToken(state.auth, initialAuthToken);
+                // The onAuthStateChanged listener will be called again with the authenticated user
+            } catch (error) {
+                console.error("Error signing in with custom token:", error);
+                document.getElementById('init-error-message').textContent = 'Failed to authenticate. Please try again.';
+                openModal('init-error');
+                state.isAuthReady = true; // Still set to true to render login page
+                renderApp(); // Render login page on auth error
+            }
+        } else {
+            // No user and no custom token, render login page for explicit login/registration
+            console.log('No user and no custom token. Rendering login page for explicit authentication.');
+            state.isAuthReady = true;
+            state.userId = null; // Ensure userId is null if not authenticated
+            renderApp();
+        }
+      }
+    });
+
     // Initial render call (will show login page until auth state is determined)
+    // This will be called once, and then the onAuthStateChanged listener will handle subsequent renders.
+    // It's important that renderApp() is called here to show the initial login state.
     renderApp();
 
   </script>
