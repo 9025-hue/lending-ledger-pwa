@@ -1387,16 +1387,20 @@
 
     // Firebase Auth State Observer
     onAuthStateChanged(state.auth, async (user) => {
+      console.log('onAuthStateChanged triggered. User:', user);
       if (user) {
         state.userId = user.uid;
         state.displayName = user.displayName || user.email;
         state.isAuthReady = true;
+        console.log('User authenticated. state.isAuthReady:', state.isAuthReady);
+        renderApp(); // Explicitly render the app when authenticated
         startListeners(); // Start listening to Firestore data
       } else {
         // If no user, try to sign in anonymously if initial token is available
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         if (initialAuthToken) {
             try {
+                console.log('Attempting anonymous sign-in with custom token...');
                 await signInWithCustomToken(state.auth, initialAuthToken);
                 // The onAuthStateChanged listener will be called again with the authenticated user
             } catch (error) {
@@ -1404,11 +1408,14 @@
                 document.getElementById('init-error-message').textContent = 'Failed to authenticate. Please try again.';
                 openModal('init-error');
                 state.isAuthReady = true; // Still set to true to render login page
-                renderApp();
+                renderApp(); // Render login page on auth error
             }
         } else {
             // No user and no custom token, render login page
+            console.log('No user and no custom token. Rendering login page.');
             state.isAuthReady = true;
+            // For unauthenticated users, ensure userId is a random string for Firestore paths
+            state.userId = crypto.randomUUID();
             renderApp();
         }
       }
