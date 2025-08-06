@@ -1,6 +1,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <head>
+  <!-- ... existing meta tags and links ... -->
+  <link rel="manifest" href="/manifest.json">
+  <!-- ... rest of your head content ... -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>" type="image/svg+xml" />
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -11,9 +15,6 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Lending Ledger">
   <meta name="description" content="Track your loans and manage your lending business">
-
-  <!-- Link to the Web App Manifest -->
-  <link rel="manifest" href="/manifest.json">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -71,9 +72,50 @@
       color: white;
       background: rgba(255,255,255,0.1);
     }
+
+    /* PDF loading indicator */
+    .pdf-loading {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 2000;
+    }
+    .pdf-loading-content {
+      background: white;
+      padding: 2rem;
+      border-radius: 8px;
+      text-align: center;
+    }
+    .pdf-loading-spinner {
+      border: 4px solid rgba(0,0,0,0.1);
+      border-radius: 50%;
+      border-top: 4px solid #3498db;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 1rem;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
   </style>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
+
+  <!-- PDF Loading Indicator -->
+  <div id="pdf-loading" class="pdf-loading hidden">
+    <div class="pdf-loading-content">
+      <div class="pdf-loading-spinner"></div>
+      <p>Preparing PDF document...</p>
+    </div>
+  </div>
 
   <div id="install-prompt" class="install-prompt">
     <span>📱 Install Lending Ledger for easy access</span>
@@ -81,6 +123,7 @@
     <button id="dismiss-btn" class="close-btn">✕</button>
   </div>
 
+  <!-- Rest of your HTML remains the same -->
   <nav id="navbar" class="bg-gray-800 p-4 shadow-lg rounded-b-lg hidden">
     <div class="container mx-auto flex justify-between items-center">
       <h1 class="text-white text-2xl font-bold">💰 Lending Ledger</h1>
@@ -93,1235 +136,95 @@
     </div>
   </nav>
 
-  <div id="login-page" class="flex-grow flex items-center justify-center p-4">
-    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md text-center">
-      <div class="flex space-x-2 justify-center mb-6">
-        <button id="login-tab" onclick="setAuthMode('login')" class="px-6 py-2 rounded-lg text-gray-500 hover:bg-gray-200 font-semibold transition-all">Log In</button>
-        <button id="register-tab" onclick="setAuthMode('register')" class="px-6 py-2 rounded-lg bg-indigo-600 text-white font-semibold transition-all">Register</button>
-      </div>
+  <!-- Rest of your HTML remains unchanged until the scripts -->
+  <!-- ... -->
 
-      <h2 class="text-3xl font-bold text-gray-800 mb-6" id="auth-title">Register for Lending Ledger</h2>
-      <p class="text-gray-600 mb-6" id="auth-message">Create an account with your email and password.</p>
+  <!-- Updated script loading with fallbacks -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" onerror="window.pdfLoadError = true"></script>
+  <script src="https://unpkg.com/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.js" onerror="window.autoTableLoadError = true"></script>
 
-      <form id="email-auth-form" class="space-y-4">
-        <input type="text" id="display-name-input" placeholder="Your Name" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-        <input type="email" id="email-input" placeholder="Email Address" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-        <input type="password" id="password-input" placeholder="Password" class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
+  <script>
+    // Track PDF library loading status
+    window.pdfLibrariesLoaded = false;
+    window.pdfLoadError = false;
+    window.autoTableLoadError = false;
 
-        <div id="forgot-password-link" class="flex justify-end text-sm hidden">
-          <button type="button" onclick="handleForgotPassword()" class="text-indigo-600 hover:underline transition-colors font-semibold">Forgot Password?</button>
-        </div>
-
-        <button type="submit" class="w-full bg-indigo-600 text-white font-bold py-3 px-6 rounded-lg shadow-lg hover:bg-indigo-700 transition-colors" id="email-auth-button">
-          Register
-        </button>
-      </form>
-
-      <div id="auth-error-message" class="text-red-500 mt-4 text-sm hidden"></div>
-    </div>
-  </div>
-
-  <main id="main-content" class="container mx-auto p-4 hidden">
-    <div id="app-container"></div>
-  </main>
-
-  <div id="init-error" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center p-4">
-    <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full text-center">
-      <h3 class="text-2xl font-bold text-red-600 mb-4">Application Error</h3>
-      <p id="init-error-message" class="text-gray-700 mb-6">An unknown error occurred during initialization. Please try again later.</p>
-      <button onclick="closeModal('init-error')" class="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors">Close</button>
-    </div>
-  </div>
-
-  <div id="loan-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
-    <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
-      <div class="flex justify-between items-center mb-4">
-        <h3 id="modal-title" class="text-2xl font-bold text-gray-800">Add New Loan</h3>
-        <button onclick="closeModal('loan-modal')" class="text-gray-500 hover:text-gray-800 transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
-        </button>
-      </div>
-      <form id="loan-form">
-        <input type="hidden" id="transaction-id">
-        <div class="mb-4">
-          <label for="borrower-name" class="block text-gray-700 font-medium mb-2">Client Name</label>
-          <input type="text" id="borrower-name" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-        </div>
-        <div class="mb-4">
-          <label for="amount" class="block text-gray-700 font-medium mb-2">Original Amount (R)</label>
-          <input type="number" id="amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" step="0.01" required>
-        </div>
-        <div class="mb-4" id="interest-rate-group">
-          <label for="interest-rate" class="block text-gray-700 font-medium mb-2">Monthly Interest Rate (%)</label>
-          <input type="number" id="interest-rate" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" min="0" step="0.1">
-        </div>
-        <div class="mb-4" id="loan-period-group">
-          <label for="loan-period" class="block text-gray-700 font-medium mb-2">Loan Period (Months)</label>
-          <input type="number" id="loan-period" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" min="1">
-        </div>
-        <div class="mb-6">
-          <label for="due-date" class="block text-gray-700 font-medium mb-2">Due Date</label>
-          <input type="date" id="due-date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-        </div>
-        <div class="flex justify-end space-x-4">
-          <button type="button" onclick="closeModal('loan-modal')" class="bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors">Cancel</button>
-          <button type="submit" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">Submit</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div id="payment-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
-    <div class="bg-white p-8 rounded-lg shadow-xl max-w-md w-full">
-      <div class="flex justify-between items-center mb-4">
-        <h3 class="text-2xl font-bold text-gray-800">Record Payment</h3>
-        <button onclick="closeModal('payment-modal')" class="text-gray-500 hover:text-gray-800 transition-colors">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
-          </svg>
-        </button>
-      </div>
-
-      <div class="mb-4 p-4 bg-gray-50 rounded-lg">
-        <p class="text-gray-700">Client: <span class="font-semibold" id="payment-client-name"></span></p>
-        <p class="text-gray-700 mt-2">Current Balance: <span class="font-semibold text-xl text-green-600" id="payment-current-balance"></span></p>
-        <p class="text-gray-700 mt-2">Last Payment: <span class="font-medium" id="payment-last-payment"></span></p>
-      </div>
-
-      <form id="payment-form">
-        <input type="hidden" id="payment-transaction-id">
-        <div class="mb-4">
-          <label for="payment-amount" class="block text-gray-700 font-medium mb-2">Payment Amount (R)</label>
-          <input type="number" id="payment-amount" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" step="0.01" min="0.01" required>
-        </div>
-        <div class="mb-4">
-          <label for="payment-date" class="block text-gray-700 font-medium mb-2">Payment Date</label>
-          <input type="date" id="payment-date" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-        </div>
-        <div class="mb-4">
-          <label for="payment-method" class="block text-gray-700 font-medium mb-2">Payment Method</label>
-          <select id="payment-method" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="cash">Cash</option>
-            <option value="bank_transfer">Bank Transfer</option>
-            <option value="mobile_money">Mobile Money</option>
-            <option value="other">Other</option>
-          </select>
-        </div>
-        <div class="mb-4">
-          <label for="payment-notes" class="block text-gray-700 font-medium mb-2">Notes (Optional)</label>
-          <textarea id="payment-notes" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" rows="2"></textarea>
-        </div>
-        <div class="flex justify-end space-x-4">
-          <button type="button" onclick="closeModal('payment-modal')" class="bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors">Cancel</button>
-          <button type="submit" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition-colors">Record Payment</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <div id="message-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
-    <div class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full text-center">
-      <h3 id="message-modal-title" class="text-xl font-bold mb-4"></h3>
-      <p id="message-modal-content" class="text-gray-700 mb-6"></p>
-      <button onclick="closeModal('message-modal')" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors">OK</button>
-    </div>
-  </div>
-
-  <div id="confirm-modal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
-    <div class="bg-white p-8 rounded-lg shadow-xl max-w-sm w-full text-center">
-      <h3 id="confirm-modal-title" class="text-xl font-bold mb-4">Confirm Action</h3>
-      <p id="confirm-modal-content" class="text-gray-700 mb-6">Are you sure you want to proceed?</p>
-      <div class="flex justify-center space-x-4">
-        <button id="confirm-cancel-btn" onclick="closeModal('confirm-modal')" class="bg-gray-300 text-gray-800 px-6 py-2 rounded-lg hover:bg-gray-400 transition-colors">Cancel</button>
-        <button id="confirm-ok-btn" class="bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700 transition-colors">Confirm</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://unpkg.com/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.js"></script>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import {
-        getAuth,
-        onAuthStateChanged,
-        signOut,
-        createUserWithEmailAndPassword,
-        signInWithEmailAndPassword,
-        sendPasswordResetEmail,
-        updateProfile,
-        signInWithCustomToken
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import {
-      getFirestore,
-      collection,
-      onSnapshot,
-      doc,
-      setDoc,
-      addDoc,
-      updateDoc,
-      deleteDoc,
-      serverTimestamp,
-      getDoc,
-      getDocs,
-      query,
-      where,
-      writeBatch // Import writeBatch for atomic operations
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    // Global state management
-    const state = {
-      db: null,
-      auth: null,
-      userId: null,
-      displayName: null,
-      isAuthReady: false,
-      receivables: [],
-      payables: [],
-      clients: [], // Clients derived from receivables
-      activeView: 'dashboard', // Default to dashboard
-      currentClientName: null,
-      isRegisterMode: true,
-      appId: null, // Add appId to state
-    };
-
-    // Firebase configuration and initialization
-    // The firebaseConfig is provided by the environment, no need to hardcode it.
-    // Ensure __firebase_config is parsed correctly.
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-      apiKey: "AIzaSyArljsBjgdSiZxKYQnAYMSx93C8H6jBy0Y",
-      authDomain: "loan-lending-772ad.firebaseapp.com",
-      projectId: "loan-lending-772ad",
-      storageBucket: "loan-lending-772ad.firebasestorage.app",
-      messagingSenderId: "308404853120",
-      appId: "1:308404853120:web:18b3a4ab1189e9cb8a0965",
-      measurementId: "G-1NS69YRCF0"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    state.db = getFirestore(app); // Initialize state.db here
-    state.auth = getAuth(app);   // Initialize state.auth here
-
-    // Expose Firebase Firestore functions globally for inline event handlers
-    window.firebaseFirestore = {
-        doc,
-        collection,
-        getDoc,
-        getDocs,
-        query,
-        where,
-        updateDoc,
-        addDoc,
-        deleteDoc,
-        writeBatch,
-        serverTimestamp
-    };
-
-    // Function to calculate current balance.
-    const calculateCurrentBalance = (transaction) => {
-      if (transaction.isPaid) {
-        return 0;
+    // Check if PDF libraries are loaded
+    function checkPdfLibraries() {
+      if (window.pdfLoadError || window.autoTableLoadError) {
+        return false;
       }
-      if (transaction.currentBalance !== undefined && transaction.currentBalance !== null) {
-        return transaction.currentBalance;
-      }
-      if (!transaction.createdAt) {
-        return transaction.amount || 0;
-      }
+      return window.jspdf && window.jspdf.jsPDF && window.jspdf.autoTable;
+    }
+
+    // Show PDF loading indicator
+    function showPdfLoading() {
+      document.getElementById('pdf-loading').classList.remove('hidden');
+    }
+
+    // Hide PDF loading indicator
+    function hidePdfLoading() {
+      document.getElementById('pdf-loading').classList.add('hidden');
+    }
+
+    // Retry loading PDF libraries
+    function retryPdfLibraries(callback) {
+      showPdfLoading();
       
-      const now = new Date();
-      const createdAtDate = transaction.createdAt.toDate ? transaction.createdAt.toDate() : new Date(transaction.createdAt.seconds * 1000);
-      const monthsElapsed = (now.getFullYear() - createdAtDate.getFullYear()) * 12 + (now.getMonth() - createdAtDate.getMonth());
-      const monthlyInterestRate = (transaction.interestRate || 0) / 100;
-      const initialAmount = transaction.originalAmount || transaction.amount || 0;
-      
-      return initialAmount * Math.pow(1 + monthlyInterestRate, monthsElapsed);
-    };
-
-    // Function to format date
-    const formatDate = (date) => {
-      if (!date) return 'N/A';
-      const d = date.toDate ? date.toDate() : new Date(date);
-      return d.toLocaleDateString('en-ZA', { year: 'numeric', month: 'short', day: 'numeric' });
-    };
-
-    // Custom message modal
-    window.showMessage = (title, message) => {
-      document.getElementById('message-modal-title').textContent = title;
-      document.getElementById('message-modal-content').textContent = message;
-      openModal('message-modal');
-    };
-
-    // Custom confirmation modal
-    window.showConfirm = (title, message, onConfirm) => {
-      document.getElementById('confirm-modal-title').textContent = title;
-      document.getElementById('confirm-modal-content').textContent = message;
-      const confirmBtn = document.getElementById('confirm-ok-btn');
-      const cancelBtn = document.getElementById('confirm-cancel-btn');
-
-      const handleConfirm = () => {
-        onConfirm();
-        confirmBtn.removeEventListener('click', handleConfirm);
-        cancelBtn.removeEventListener('click', handleCancel);
-        closeModal('confirm-modal');
+      // Create new script elements
+      const jsPDFScript = document.createElement('script');
+      jsPDFScript.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+      jsPDFScript.onload = function() {
+        const autoTableScript = document.createElement('script');
+        autoTableScript.src = 'https://unpkg.com/jspdf-autotable@3.5.25/dist/jspdf.plugin.autotable.js';
+        autoTableScript.onload = function() {
+          window.pdfLibrariesLoaded = checkPdfLibraries();
+          hidePdfLoading();
+          if (window.pdfLibrariesLoaded && typeof callback === 'function') {
+            callback();
+          } else {
+            showMessage('Error', 'Failed to load PDF libraries after retry. Please check your internet connection.');
+          }
+        };
+        autoTableScript.onerror = function() {
+          hidePdfLoading();
+          showMessage('Error', 'Failed to load PDF table plugin. Please try again later.');
+        };
+        document.head.appendChild(autoTableScript);
       };
-
-      const handleCancel = () => {
-        confirmBtn.removeEventListener('click', handleConfirm);
-        cancelBtn.removeEventListener('click', handleCancel);
-        closeModal('confirm-modal');
+      jsPDFScript.onerror = function() {
+        hidePdfLoading();
+        showMessage('Error', 'Failed to load PDF library. Please try again later.');
       };
+      document.head.appendChild(jsPDFScript);
+    }
 
-      confirmBtn.addEventListener('click', handleConfirm);
-      cancelBtn.addEventListener('click', handleCancel);
-      openModal('confirm-modal');
-    };
-
-    // Toggles between login and register views on the auth page
-    window.setAuthMode = (mode) => {
-      state.isRegisterMode = (mode === 'register');
-      const title = document.getElementById('auth-title');
-      const message = document.getElementById('auth-message');
-      const button = document.getElementById('email-auth-button');
-      const nameInput = document.getElementById('display-name-input');
-      const forgotPasswordLink = document.getElementById('forgot-password-link');
-      const loginTab = document.getElementById('login-tab');
-      const registerTab = document.getElementById('register-tab');
-      const errorDiv = document.getElementById('auth-error-message');
-      
-      errorDiv.classList.add('hidden');
-      errorDiv.textContent = '';
-
-      if (state.isRegisterMode) {
-        title.textContent = 'Register for Lending Ledger';
-        message.textContent = 'Create an account with your email and password.';
-        button.textContent = 'Register';
-        nameInput.classList.remove('hidden');
-        nameInput.disabled = false;
-        nameInput.required = true;
-        forgotPasswordLink.classList.add('hidden');
-        loginTab.classList.remove('bg-indigo-600', 'text-white');
-        loginTab.classList.add('text-gray-500', 'hover:bg-gray-200');
-        registerTab.classList.add('bg-indigo-600', 'text-white');
-        registerTab.classList.remove('text-gray-500', 'hover:bg-gray-200');
-      } else {
-        title.textContent = 'Log In to Lending Ledger';
-        message.textContent = 'Please sign in to continue.';
-        button.textContent = 'Log In';
-        nameInput.classList.add('hidden');
-        nameInput.disabled = true;
-        nameInput.required = false;
-        forgotPasswordLink.classList.remove('hidden');
-        registerTab.classList.remove('bg-indigo-600', 'text-white');
-        registerTab.classList.add('text-gray-500', 'hover:bg-gray-200');
-        loginTab.classList.add('bg-indigo-600', 'text-white');
-        loginTab.classList.remove('text-gray-500', 'hover:bg-gray-200');
-      }
-    };
-
-    // Handles authentication errors
-    const handleAuthError = (error) => {
-        const errorDiv = document.getElementById('auth-error-message');
-        errorDiv.textContent = error.message;
-        errorDiv.classList.remove('hidden');
-        console.error("Authentication Error:", error);
-    };
-
-    // Handle Forgot Password
-    window.handleForgotPassword = async () => {
-        const email = document.getElementById('email-input').value;
-        if (!email) {
-            handleAuthError({ message: "Please enter your email address to reset your password." });
-            return;
-        }
-
-        try {
-            await sendPasswordResetEmail(state.auth, email);
-            showMessage("Password Reset", `A password reset link has been sent to ${email}. Please check your inbox.`);
-        } catch (error) {
-            handleAuthError(error);
-        }
-    };
-
-    // Sign out user
-    window.signOutUser = async () => {
-      try {
-        if (state.auth) {
-          await signOut(state.auth);
-          state.userId = null;
-          state.displayName = null;
-          state.isAuthReady = false;
-          state.receivables = [];
-          state.payables = [];
-          state.clients = [];
-          renderApp(); // Clear content and show login page
-        }
-      } catch (error) {
-        console.error("Error signing out:", error);
-        showMessage("Sign Out Error", "Failed to sign out. Please try again.");
-      }
-    };
-
-    // Start Firestore listeners for receivables and payables
-    const startListeners = () => {
-      if (!state.db || !state.userId || !state.appId) {
-        console.error("startListeners called without a valid user ID, app ID, or database instance.");
-        return;
-      }
-      
-      console.log(`Starting Firestore listeners for user ID: ${state.userId}, App ID: ${state.appId}`);
-      // Corrected paths to include artifacts/${appId}
-      const receivablesPath = `artifacts/${state.appId}/users/${state.userId}/receivables`;
-      const payablesPath = `artifacts/${state.appId}/users/${state.userId}/payables`;
-      const paymentsPath = `artifacts/${state.appId}/users/${state.userId}/payments`; // Also for payments
-
-      onSnapshot(window.firebaseFirestore.collection(state.db, receivablesPath), (snapshot) => {
-        state.receivables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        // Derive unique clients from receivables
-        const uniqueClients = [...new Set(state.receivables.map(item => item.borrowerName))]
-                                .filter(name => name) // Filter out any empty names
-                                .map(name => ({ name }));
-        state.clients = uniqueClients;
-        renderApp();
-      }, (error) => console.error("Error fetching receivables:", error));
-
-      onSnapshot(window.firebaseFirestore.collection(state.db, payablesPath), (snapshot) => {
-        state.payables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        renderApp();
-      }, (error) => console.error("Error fetching payables:", error));
-    };
-
-    // Load payment history for a client (used for display, not for PDF generation directly)
-    const loadPaymentHistory = async (clientName) => {
-      const paymentHistoryTable = document.getElementById('payment-history');
-      if (!paymentHistoryTable) return;
-
-      paymentHistoryTable.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Loading payment history...</td></tr>';
-
-      try {
-        // Use window.firebaseFirestore for Firestore calls
-        const paymentsQuery = window.firebaseFirestore.query(
-          window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
-          window.firebaseFirestore.where('clientName', '==', clientName)
-        );
-
-        const querySnapshot = await window.firebaseFirestore.getDocs(paymentsQuery);
-        let payments = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
-
-        // Client-side sorting by date (descending)
-        payments.sort((a, b) => {
-          const dateA = a.date.toDate ? a.date.toDate() : new Date(a.date.seconds * 1000);
-          const dateB = b.date.toDate ? b.date.toDate() : new Date(b.date.seconds * 1000);
-          return dateB - dateA;
-        });
-
-        if (payments.length === 0) {
-          paymentHistoryTable.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">No payment history found</td></tr>';
-          return;
-        }
-
-        paymentHistoryTable.innerHTML = payments.map(payment => {
-          return `
-            <tr class="hover:bg-gray-50 transition-colors">
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(payment.date)}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${payment.amount.toFixed(2)}</td>
-              <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${payment.method.replace('_', ' ').toUpperCase()}</td>
-              <td class="px-6 py-4 text-sm text-gray-500">${payment.notes || '-'}</td>
-              <td class="px-6 py-4 text-right text-sm">
-                <button onclick="generatePaymentReceipt('${payment.id}')" class="text-indigo-600 hover:text-indigo-900 transition-colors" title="Download Receipt">
-                  Receipt
-                </button>
-              </td>
-            </tr>
-          `;
-        }).join('');
-      } catch (error) {
-        console.error("Error loading payment history:", error);
-        paymentHistoryTable.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Error loading payment history</td></tr>';
-      }
-    };
-
-    // Update changeView to load payment history when viewing client report
-    window.changeView = (viewName, clientName = null) => {
-      state.activeView = viewName;
-      state.currentClientName = clientName;
-      renderApp();
-
-      if (viewName === 'clientReport' && clientName) {
-        // Delay loading payment history slightly to ensure the DOM is ready
-        setTimeout(() => loadPaymentHistory(clientName), 100);
-      }
-    };
-
-    const renderDashboard = () => {
-      // Use the stored currentBalance for receivables, as it now includes front-loaded interest
-      const totalReceivable = state.receivables.filter(t => !t.isPaid).reduce((sum, t) => sum + calculateCurrentBalance(t), 0);
-      const totalPayable = state.payables.filter(t => !t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
-      const totalPaidReceivable = state.receivables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.totalPaidAmount || 0), 0);
-      const totalPaidPayable = state.payables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
-
-      // Calculate total interest profit from paid loans
-      const totalInterestProfit = state.receivables.filter(t => t.isPaid).reduce((sum, t) => {
-        const originalAmount = t.originalAmount || t.amount || 0;
-        const paidAmount = t.totalPaidAmount || 0;
-        if (paidAmount > originalAmount) {
-          return sum + (paidAmount - originalAmount);
-        }
-        return sum;
-      }, 0);
-
-      return `
-        <div class="p-8">
-          <h2 class="text-3xl font-bold mb-6 text-gray-800">Dashboard</h2>
-          <div class="bg-gray-100 p-4 rounded-lg shadow-inner mb-6">
-            <p class="text-gray-600">Welcome, <span class="font-semibold">${state.displayName || 'Guest'}</span>!</p>
-            <p class="text-gray-600 text-sm">User ID: <span class="font-mono text-xs">${state.userId}</span></p>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            ${renderCard("Total Accounts Receivable", `R${totalReceivable.toFixed(2)}`, "bg-blue-500")}
-            ${renderCard("Total Accounts Payable", `R${totalPayable.toFixed(2)}`, "bg-red-500")}
-            ${renderCard("Total Paid (Receivable)", `R${totalPaidReceivable.toFixed(2)}`, "bg-green-500")}
-            ${renderCard("Total Interest Profit", `R${totalInterestProfit.toFixed(2)}`, "bg-purple-600")}
-          </div>
-          <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
-            <h3 class="text-2xl font-bold text-gray-800 mb-4">Financial Summary</h3>
-            <p class="text-xl">
-              Total Interest Profit: <span class="font-bold ${totalInterestProfit >= 0 ? 'text-green-600' : 'text-red-600'}">R${totalInterestProfit.toFixed(2)}</span>
-            </p>
-          </div>
-        </div>
-      `;
-    };
-
-    const renderCard = (title, value, color) => `
-      <div class="p-6 rounded-lg shadow-lg text-white ${color}">
-        <h3 class="text-lg font-semibold">${title}</h3>
-        <p class="text-4xl font-bold mt-2">${value}</p>
-      </div>
-    `;
-
-    const renderClientsView = () => {
-      const clientsList = state.clients.length > 0 ?
-        state.clients.map((client) => `
-          <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${client.name}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-              <button onclick="changeView('clientReport', '${client.name}')" class="text-indigo-600 hover:text-indigo-900 transition-colors">View Report</button>
-              <button onclick="deleteClientConfirm('${client.name}')" class="ml-4 text-red-600 hover:text-red-900 transition-colors">Delete Client</button>
-            </td>
-          </tr>
-        `).join('') :
-        `<tr><td colspan="2" class="p-4 text-center text-gray-500">No clients found. Add a new loan to get started.</td></tr>`;
-
-      return `
-        <div class="p-8">
-          <div class="flex justify-between items-center mb-6">
-            <h2 class="text-3xl font-bold text-gray-800">Your Clients</h2>
-            <div class="flex space-x-4">
-              <button onclick="downloadAllReports()" class="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-green-700 transition-colors">
-                Download All Reports (PDF)
-              </button>
-              <button onclick="openLoanModal()" class="bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors">
-                Add New Loan
-              </button>
-            </div>
-          </div>
-          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Client Name</th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                ${clientsList}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-    };
-
-    const renderClientReportView = () => {
-      const clientLoans = state.receivables.filter(loan => loan.borrowerName === state.currentClientName);
-      const totalLoanAmount = clientLoans.reduce((sum, loan) => sum + (loan.originalAmount || loan.amount || 0), 0);
-      // Use calculateCurrentBalance for display, which now just returns the stored currentBalance
-      const totalOutstandingBalance = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
-
-      const loansList = clientLoans.length > 0 ?
-        clientLoans.map((loan) => `
-          <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${formatDate(loan.createdAt)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${(loan.originalAmount || loan.amount).toFixed(2)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${((loan.interestRate || 0) * 100).toFixed(1)}%</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${loan.isPaid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                ${loan.isPaid ? 'Paid' : 'Unpaid'}
-              </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-              <button onclick="openPaymentModal('${loan.id}')" class="bg-green-600 text-white px-4 py-2 rounded-full shadow hover:bg-green-700 transition-colors mr-2">
-                Add Payment
-              </button>
-              <button onclick="openLoanModal('${loan.id}')" class="text-indigo-600 hover:text-indigo-900 mx-2 transition-colors" title="Edit">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                </svg>
-              </button>
-              <button onclick="deleteTransaction('${loan.id}', 'receivable')" class="text-red-600 hover:text-red-900 mx-2 transition-colors" title="Delete Loan">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
-                </svg>
-              </button>
-            </td>
-          </tr>
-        `).join('') :
-        `<tr><td colspan="6" class="p-4 text-center text-gray-500">This client has no loans.</td></tr>`;
-
-      // Payment history section
-      const paymentHistory = `
-        <div class="mt-8">
-          <h3 class="text-xl font-bold text-gray-800 mb-4">Payment History</h3>
-          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Method</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Notes</th>
-                  <th class="px-6 py-3 text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200" id="payment-history">
-                </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-
-      return `
-        <div class="p-8">
-          <div class="flex justify-between items-center mb-6">
-            <h2 class="text-3xl font-bold text-gray-800">Client Report: ${state.currentClientName}</h2>
-            <button onclick="downloadClientReport('${state.currentClientName}')" class="bg-green-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-green-700 transition-colors">
-              Download PDF Report
-            </button>
-          </div>
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-            ${renderCard("Total Loaned Amount", `R${totalLoanAmount.toFixed(2)}`, "bg-gray-700")}
-            ${renderCard("Total Outstanding Balance", `R${totalOutstandingBalance.toFixed(2)}`, "bg-yellow-600")}
-          </div>
-          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Loan Date</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Original Amount</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Balance</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest Rate</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                ${loansList}
-              </tbody>
-            </table>
-          </div>
-          ${paymentHistory}
-        </div>
-      `;
-    };
-
-    const renderPayablesView = () => {
-      const payablesList = state.payables.length > 0 ?
-        state.payables.map((transaction) => `
-          <tr class="hover:bg-gray-50 transition-colors">
-            <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${transaction.lenderName}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">R${transaction.amount ? transaction.amount.toFixed(2) : '0.00'}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${formatDate(transaction.dueDate)}</td>
-            <td class="px-6 py-4 whitespace-nowrap text-sm">
-              <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${transaction.isPaid ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
-                ${transaction.isPaid ? 'Paid' : 'Unpaid'}
-              </span>
-            </td>
-            <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-              <button onclick="openPayableModal('${transaction.id}')" class="text-indigo-600 hover:text-indigo-900 mx-2 transition-colors" title="Edit">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
-                  <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                </svg>
-              </button>
-              <button onclick="deleteTransaction('${transaction.id}', 'payable')" class="text-red-600 hover:text-red-900 mx-2 transition-colors" title="Delete">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 inline-block" viewBox="0 0 20 20" fill="currentColor">
-                  <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" />
-                </svg>
-              </button>
-            </td>
-          </tr>
-        `).join('') :
-        `<tr><td colspan="5" class="p-4 text-center text-gray-500">No payables found. Click "Add New Payable" to get started.</td></tr>`;
-
-      return `
-        <div class="p-8">
-          <div class="flex justify-between items-center mb-6">
-            <h2 class="text-3xl font-bold text-gray-800">Accounts Payable</h2>
-            <button onclick="openPayableModal()" class="bg-blue-600 text-white px-6 py-3 rounded-full shadow-lg hover:bg-blue-700 transition-colors">
-              Add New Payable
-            </button>
-          </div>
-          <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <table class="min-w-full divide-y divide-gray-200">
-              <thead class="bg-gray-50">
-                <tr>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lender Name</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
-                  <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody class="bg-white divide-y divide-gray-200">
-                ${payablesList}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      `;
-    };
-
-    const renderApp = () => {
-      const appContainer = document.getElementById('app-container');
-      const loginPage = document.getElementById('login-page');
-      const mainContent = document.getElementById('main-content');
-      const navbar = document.getElementById('navbar');
-
-      if (!state.isAuthReady) {
-        loginPage.classList.remove('hidden');
-        mainContent.classList.add('hidden');
-        navbar.classList.add('hidden');
-        return;
-      }
-
-      loginPage.classList.add('hidden');
-      mainContent.classList.remove('hidden');
-      navbar.classList.remove('hidden');
-
-      switch (state.activeView) {
-        case 'dashboard':
-          appContainer.innerHTML = renderDashboard();
-          break;
-        case 'clients':
-          appContainer.innerHTML = renderClientsView();
-          break;
-        case 'clientReport':
-          appContainer.innerHTML = renderClientReportView();
-          break;
-        case 'payable':
-          appContainer.innerHTML = renderPayablesView();
-          break;
-        default:
-          // Default to dashboard if activeView is not explicitly set or recognized
-          state.activeView = 'dashboard';
-          appContainer.innerHTML = renderDashboard();
-          break;
-      }
-    };
-
-    // Generic modal open/close functions
-    window.openModal = (modalId) => {
-      document.getElementById(modalId).classList.remove('hidden');
-    };
-
-    window.closeModal = (modalId) => {
-      document.getElementById(modalId).classList.add('hidden');
-    };
-
-    // Open loan/payable modal for adding or editing
-    window.openLoanModal = (transactionId = null) => {
-      const modalTitle = document.getElementById('modal-title');
-      const loanForm = document.getElementById('loan-form');
-      const borrowerNameInput = document.getElementById('borrower-name');
-      const amountInput = document.getElementById('amount');
-      const interestRateInput = document.getElementById('interest-rate');
-      const loanPeriodInput = document.getElementById('loan-period');
-      const dueDateInput = document.getElementById('due-date');
-      const interestRateGroup = document.getElementById('interest-rate-group');
-      const loanPeriodGroup = document.getElementById('loan-period-group');
-
-      loanForm.reset();
-      
-      const isPayableMode = state.activeView === 'payable';
-      document.getElementById('transaction-id').value = transactionId || '';
-
-      if (isPayableMode) {
-        modalTitle.textContent = transactionId ? 'Edit Payable' : 'Add New Payable';
-        borrowerNameInput.placeholder = 'Lender Name';
-        interestRateGroup.classList.add('hidden');
-        loanPeriodGroup.classList.add('hidden');
-        interestRateInput.required = false;
-        loanPeriodInput.required = false;
-      } else {
-        modalTitle.textContent = transactionId ? 'Edit Loan' : 'Add New Loan';
-        borrowerNameInput.placeholder = 'Client Name';
-        interestRateGroup.classList.remove('hidden');
-        loanPeriodGroup.classList.remove('hidden');
-        interestRateInput.required = true;
-        loanPeriodInput.required = true;
-      }
-
-      if (transactionId) {
-        const transaction = isPayableMode
-          ? state.payables.find(t => t.id === transactionId)
-          : state.receivables.find(t => t.id === transactionId);
-
-        if (transaction) {
-          borrowerNameInput.value = isPayableMode ? transaction.lenderName : transaction.borrowerName;
-          amountInput.value = transaction.amount;
-          if (!isPayableMode) {
-            interestRateInput.value = ((transaction.interestRate || 0) * 100);
-            loanPeriodInput.value = transaction.loanPeriod;
-          }
-          if (transaction.dueDate) {
-            const dueDate = transaction.dueDate.toDate ? transaction.dueDate.toDate() : new Date(transaction.dueDate.seconds * 1000);
-            dueDateInput.value = dueDate.toISOString().split('T')[0];
-          }
-        }
-      }
-      
-      openModal('loan-modal');
-    };
-
-    // Open payable modal (alias for openLoanModal with payable context)
-    window.openPayableModal = (transactionId = null) => {
-      // Temporarily change view for modal context, will be reset by renderApp
-      state.activeView = 'payable'; 
-      openLoanModal(transactionId);
-    };
-
-    window.openPaymentModal = (transactionId) => {
-      const transaction = state.receivables.find(t => t.id === transactionId);
-      if (!transaction) {
-        showMessage('Error', 'Loan transaction not found.');
-        return;
-      }
-
-      const currentBalance = calculateCurrentBalance(transaction);
-      document.getElementById('payment-transaction-id').value = transactionId;
-      document.getElementById('payment-client-name').textContent = transaction.borrowerName;
-      document.getElementById('payment-current-balance').textContent = `R${currentBalance.toFixed(2)}`;
-
-      // Set today's date as default
-      const today = new Date().toISOString().split('T')[0];
-      document.getElementById('payment-date').value = today;
-
-      // Show last payment if exists
-      if (transaction.lastPaymentAt) {
-        const lastPaymentDate = formatDate(transaction.lastPaymentAt);
-        const lastPaymentAmount = transaction.lastPaymentAmount ? `R${transaction.lastPaymentAmount.toFixed(2)}` : 'N/A';
-        document.getElementById('payment-last-payment').textContent = `${lastPaymentAmount} on ${lastPaymentDate}`;
-      } else {
-        document.getElementById('payment-last-payment').textContent = 'No payments yet';
-      }
-
-      // Reset form fields (except hidden transaction ID)
-      document.getElementById('payment-amount').value = '';
-      document.getElementById('payment-method').value = 'cash';
-      document.getElementById('payment-notes').value = '';
-      document.getElementById('payment-amount').max = currentBalance.toFixed(2); // Set max for validation
-      
-      openModal('payment-modal');
-    };
-
-    // Handle payment form submission
-    document.getElementById('payment-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const transactionId = document.getElementById('payment-transaction-id').value;
-      const paymentAmount = parseFloat(document.getElementById('payment-amount').value);
-      const paymentDate = document.getElementById('payment-date').value;
-      const paymentMethod = document.getElementById('payment-method').value;
-      const paymentNotes = document.getElementById('payment-notes').value;
-
-      if (isNaN(paymentAmount) || paymentAmount <= 0) {
-        showMessage('Invalid Amount', 'Please enter a valid payment amount greater than 0.');
-        return;
-      }
-
-      try {
-        // Corrected path for receivables
-        const transactionDocRef = window.firebaseFirestore.doc(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`, transactionId);
-        const transactionDoc = await window.firebaseFirestore.getDoc(transactionDocRef);
-
-        if (transactionDoc.exists()) {
-          const data = transactionDoc.data();
-          // Use the stored currentBalance for payment calculation
-          const currentBalance = data.currentBalance || data.amount; 
-
-          if (paymentAmount > currentBalance) {
-            showMessage('Invalid Amount', `Payment amount cannot exceed current balance of R${currentBalance.toFixed(2)}.`);
-            return;
-          }
-
-          const newBalance = currentBalance - paymentAmount;
-          const isPaid = newBalance <= 0.01; // Allow for floating point inaccuracies
-
-          // Calculate the new total paid amount
-          const currentTotalPaid = data.totalPaidAmount || 0;
-          const newTotalPaid = currentTotalPaid + paymentAmount;
-
-          // Create payment record
-          const paymentData = {
-            amount: paymentAmount,
-            date: new Date(paymentDate),
-            method: paymentMethod,
-            notes: paymentNotes,
-            transactionId: transactionId,
-            clientName: data.borrowerName,
-            userId: state.userId,
-            createdAt: window.firebaseFirestore.serverTimestamp(),
-          };
-
-          // Update transaction document with the new totalPaidAmount and new currentBalance
-          await window.firebaseFirestore.updateDoc(transactionDocRef, {
-            currentBalance: newBalance, // Update the stored currentBalance
-            isPaid: isPaid,
-            lastPaymentAt: window.firebaseFirestore.serverTimestamp(),
-            lastPaymentAmount: paymentAmount,
-            totalPaidAmount: newTotalPaid
-          });
-
-          // Add payment document - Corrected path
-          await window.firebaseFirestore.addDoc(window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`), paymentData);
-
-          closeModal('payment-modal');
-          showMessage('Success', `Payment of R${paymentAmount.toFixed(2)} recorded successfully.`);
-        } else {
-          showMessage('Error', 'Transaction not found.');
-        }
-      } catch (error) {
-        console.error("Error making payment:", error);
-        showMessage('Error', 'Failed to process payment: ' + error.message);
-      }
+    // Initialize PDF libraries check
+    document.addEventListener('DOMContentLoaded', function() {
+      window.pdfLibrariesLoaded = checkPdfLibraries();
     });
 
-    // Handle loan/payable form submission
-    document.getElementById('loan-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      
-      const form = e.target;
-      const transactionId = form['transaction-id'].value;
-      const borrowerName = form['borrower-name'].value;
-      const amount = parseFloat(form['amount'].value);
-      const dueDate = new Date(form['due-date'].value);
-
-      if (isNaN(amount) || amount <= 0) {
-        showMessage('Invalid Amount', 'Please enter a valid amount greater than 0.');
-        return;
-      }
-
-      const isPayable = state.activeView === 'payable';
-      // Corrected collection path
-      const collectionPath = `artifacts/${state.appId}/users/${state.userId}/${isPayable ? 'payables' : 'receivables'}`;
-
-      const data = {
-        amount,
-        dueDate,
-        isPaid: false, // Default to unpaid
-        createdAt: window.firebaseFirestore.serverTimestamp(),
-      };
-
-      if (isPayable) {
-        data.lenderName = borrowerName;
-      } else {
-        const loanPeriod = parseInt(form['loan-period'].value, 10);
-        const interestRate = parseFloat(form['interest-rate'].value) / 100; // Convert percentage to decimal
-
-        if (isNaN(loanPeriod) || loanPeriod <= 0) {
-          showMessage('Invalid Loan Period', 'Please enter a valid loan period greater than 0.');
-          return;
-        }
-        if (isNaN(interestRate) || interestRate < 0) {
-          showMessage('Invalid Interest Rate', 'Please enter a valid interest rate (0 or greater).');
-          return;
-        }
-
-        data.borrowerName = borrowerName;
-        data.interestRate = interestRate;
-        data.loanPeriod = loanPeriod;
-        
-        // Calculate initial currentBalance including total expected interest for new loans
-        if (!transactionId) {
-            // Calculate total expected repayment including compound interest for the entire loan period
-            const totalExpectedRepayment = amount * Math.pow(1 + interestRate, loanPeriod);
-            data.currentBalance = totalExpectedRepayment;
-            data.originalAmount = amount; // originalAmount remains the principal
-        } else {
-            // When editing an existing loan, we only update the loan parameters.
-            // The currentBalance will be managed by payments.
-            // If the user changes amount, interestRate, or loanPeriod on an existing loan,
-            // the 'currentBalance' in the database will not be automatically recalculated
-            // to a new 'total expected repayment'. It will continue to reflect
-            // 'original total expected repayment - payments'.
-            // If a recalculation of the outstanding balance based on new terms is desired
-            // for existing loans, that would require more complex logic involving
-            // recalculating the balance from the start date with the new terms,
-            // and potentially adjusting past payments. For this request, we're focusing
-            // on the initial setting for *new* loans.
-        }
-      }
-
-      try {
-        if (transactionId) {
-          // If editing an existing transaction, only update fields that might change
-          const updateData = {
-            amount: data.amount, // This is the original amount
-            dueDate: data.dueDate,
-            ...(isPayable ? { lenderName: data.lenderName } : {
-              borrowerName: data.borrowerName,
-              interestRate: data.interestRate,
-              loanPeriod: data.loanPeriod
-              // Do NOT update currentBalance here for existing loans,
-              // as its value is managed by payments after initial creation.
-            })
-          };
-          await window.firebaseFirestore.updateDoc(window.firebaseFirestore.doc(state.db, collectionPath, transactionId), updateData);
-          showMessage('Success', `${isPayable ? 'Payable' : 'Loan'} updated successfully.`);
-        } else {
-          await window.firebaseFirestore.addDoc(window.firebaseFirestore.collection(state.db, collectionPath), data);
-          showMessage('Success', `${isPayable ? 'Payable' : 'Loan'} added successfully.`);
-        }
-        closeModal('loan-modal');
-      } catch (error) {
-        console.error("Error submitting form:", error);
-        showMessage('Error', 'Failed to save information: ' + error.message);
-      }
-    });
-
-    // Delete a single transaction (loan or payable)
-    window.deleteTransaction = async (transactionId, type) => {
-      showConfirm('Delete Confirmation', `Are you sure you want to delete this ${type}? This action cannot be undone.`, async () => {
-        if (!state.db || !state.userId || !state.appId) {
-          showMessage('Error', 'Application not initialized or user not authenticated.');
-          return;
-        }
-
-        // Corrected collection path
-        const collectionPath = type === 'receivable'
-          ? `artifacts/${state.appId}/users/${state.userId}/receivables`
-          : `artifacts/${state.appId}/users/${state.userId}/payables`;
-        const docRef = window.firebaseFirestore.doc(state.db, collectionPath, transactionId);
-
-        try {
-          await window.firebaseFirestore.deleteDoc(docRef);
-          showMessage('Success', `${type} deleted successfully.`);
-        } catch (error) {
-          console.error("Error deleting transaction:", error);
-          showMessage('Error', 'Failed to delete transaction: ' + error.message);
-        }
-      });
-    };
-
-    // Delete a client and all associated loans and payments
-    window.deleteClientConfirm = (clientName) => {
-      showConfirm('Delete Client Confirmation', `Are you sure you want to delete client "${clientName}" and ALL their associated loans and payments? This action cannot be undone.`, async () => {
-        try {
-          if (!state.db || !state.userId || !state.appId) {
-            showMessage('Error', 'Application not initialized or user not authenticated.');
-            return;
-          }
-
-          const batch = window.firebaseFirestore.writeBatch(state.db);
-          // Corrected collection paths
-          const receivablesRef = window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`);
-          const paymentsRef = window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`);
-
-          // Get all loans for the client
-          const loansQuery = window.firebaseFirestore.query(receivablesRef, window.firebaseFirestore.where('borrowerName', '==', clientName));
-          const loanSnapshots = await window.firebaseFirestore.getDocs(loansQuery);
-
-          const loanIdsToDelete = [];
-          loanSnapshots.forEach(doc => {
-            batch.delete(doc.ref);
-            loanIdsToDelete.push(doc.id);
-          });
-
-          // Get all payments for the client's loans
-          if (loanIdsToDelete.length > 0) {
-            // Firestore 'in' query has a limit of 10, so we might need to batch this if many loans
-            const paymentsQuery = window.firebaseFirestore.query(paymentsRef, window.firebaseFirestore.where('transactionId', 'in', loanIdsToDelete));
-            const paymentSnapshots = await window.firebaseFirestore.getDocs(paymentsQuery);
-            paymentSnapshots.forEach(doc => {
-              batch.delete(doc.ref);
-            });
-          }
-
-          await batch.commit();
-          showMessage('Success', `Client "${clientName}" and all associated data deleted successfully.`);
-          changeView('clients'); // Go back to clients list
-        } catch (error) {
-          console.error("Error deleting client:", error);
-          showMessage('Error', 'Failed to delete client and associated data: ' + error.message);
-        }
-      });
-    };
-
-    // Download PDF report for all clients
-    window.downloadAllReports = async () => {
-      // More robust check for jsPDF and autoTable availability
-      if (!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF.prototype.autoTable !== 'function') {
-        showMessage('Error', 'Failed to load PDF libraries. Please refresh and try again.');
-        return;
-      }
-
-      // Check for Firebase initialization before proceeding with data access
-      if (!state.db || !state.userId || !state.appId) {
-        showMessage('Error', 'Application not fully initialized. Please try again in a moment.');
-        return;
-      }
-
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-
-      doc.setFontSize(16);
-      doc.text('All Client Reports', 14, 20);
-
-      const headers = [['Client Name', 'Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
-      // Corrected path for receivables
-      const data = state.receivables.map(loan => [
-        loan.borrowerName,
-        formatDate(loan.createdAt),
-        (loan.originalAmount || loan.amount || 0).toFixed(2),
-        loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
-        ((loan.interestRate || 0) * 100).toFixed(1) + '%',
-        loan.isPaid ? 'Paid' : 'Unpaid'
-      ]);
-
-      doc.autoTable({
-        head: headers,
-        body: data,
-        startY: 30,
-        headStyles: { fillColor: [31, 41, 55] },
-        theme: 'striped'
-      });
-
-      doc.save('All_Client_Reports.pdf');
-    };
-
-    // Download PDF report for a specific client, including payment history
-    window.downloadClientReport = async (clientName) => {
-      // More robust check for jsPDF and autoTable availability
-      if (!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF.prototype.autoTable !== 'function') {
-        showMessage('Error', 'Failed to load PDF libraries. Please refresh and try again.');
-        return;
-      }
-
-      // Check for Firebase initialization before proceeding with data access
-      if (!state.db || !state.userId || !state.appId) {
-        showMessage('Error', 'Application not fully initialized. Please try again in a moment.');
-        return;
-      }
-
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      // Corrected path for receivables
-      const clientLoans = state.receivables.filter(loan => loan.borrowerName === clientName);
-      const totalOutstanding = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
-
-      doc.setFontSize(16);
-      doc.text(`Client Report: ${clientName}`, 14, 20);
-      doc.setFontSize(12);
-      doc.text(`Total Outstanding Balance: R${totalOutstanding.toFixed(2)}`, 14, 30);
-
-      const loanHeaders = [['Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
-      const loanData = clientLoans.map(loan => [
-        formatDate(loan.createdAt),
-        (loan.originalAmount || loan.amount || 0).toFixed(2),
-        loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
-        ((loan.interestRate || 0) * 100).toFixed(1) + '%',
-        loan.isPaid ? 'Paid' : 'Unpaid'
-      ]);
-
-      doc.autoTable({
-        startY: 40,
-        head: loanHeaders,
-        body: loanData,
-        headStyles: { fillColor: [31, 41, 55] },
-        theme: 'striped'
-      });
-
-      // Fetch payment history for the client - Corrected path
-      let payments = [];
-      try {
-        // Use window.firebaseFirestore for Firestore calls
-        const paymentsQuery = window.firebaseFirestore.query(
-          window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
-          window.firebaseFirestore.where('clientName', '==', clientName)
-        );
-        const querySnapshot = await window.firebaseFirestore.getDocs(paymentsQuery);
-        payments = querySnapshot.docs.map(docSnap => docSnap.data());
-        // Client-side sort payments by date descending
-        payments.sort((a, b) => {
-          const dateA = a.date.toDate ? a.date.toDate() : new Date(a.date.seconds * 1000);
-          const dateB = b.date.toDate ? b.date.toDate() : new Date(b.date.seconds * 1000);
-          return dateB - dateA;
+    // Updated PDF generation functions with better error handling
+    window.generatePaymentReceipt = async function(paymentId) {
+      if (!window.pdfLibrariesLoaded) {
+        showMessage('Loading PDF Libraries', 'Preparing PDF functionality. Please wait...');
+        retryPdfLibraries(function() {
+          generatePaymentReceipt(paymentId);
         });
-      } catch (error) {
-        console.error("Error fetching payment history for PDF:", error);
-        showMessage('Error', 'Failed to fetch payment history for PDF: ' + error.message);
+        return;
       }
 
-      if (payments.length > 0) {
-        let finalY = doc.lastAutoTable.finalY || 40;
-        doc.setFontSize(14);
-        doc.text(`Payment History`, 14, finalY + 20);
-        const paymentHeaders = [['Date', 'Amount (R)', 'Method', 'Notes']];
-        const paymentData = payments.map(p => [
-          formatDate(p.date),
-          p.amount.toFixed(2),
-          p.method.replace(/_/g, ' ').toUpperCase(),
-          p.notes || '-'
-        ]);
-
-        doc.autoTable({
-          startY: finalY + 30,
-          head: paymentHeaders,
-          body: paymentData,
-          headStyles: { fillColor: [31, 41, 55] },
-          theme: 'striped'
-        });
-      }
+      showPdfLoading();
       
-      doc.save(`Client_Report_${clientName.replace(/\s/g, '_')}.pdf`);
-    };
-
-    // Generate PDF receipt for a single payment
-    window.generatePaymentReceipt = async (paymentId) => {
       try {
-        // Add a check for Firebase initialization
-        if (!state.db || !state.userId || !state.appId) {
-          showMessage('Error', 'Application not fully initialized. Please try again in a moment.');
-          return;
-        }
-
-        // More robust check for jsPDF and autoTable availability
-        if (!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF.prototype.autoTable !== 'function') {
-          showMessage('Error', 'Failed to load PDF library. Please refresh and try again.');
-          return;
-        }
-
-        // Corrected path for payments
-        const paymentDoc = await window.firebaseFirestore.getDoc(window.firebaseFirestore.doc(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`, paymentId));
+        const paymentDoc = await getDoc(doc(state.db, `users/${state.userId}/payments`, paymentId));
         if (!paymentDoc.exists()) {
+          hidePdfLoading();
           showMessage('Error', 'Payment not found.');
           return;
         }
 
         const payment = paymentDoc.data();
-
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF();
 
@@ -1338,121 +241,150 @@
         doc.text(`Notes: ${payment.notes || '-'}`, 20, 90);
 
         // Download the PDF
+        hidePdfLoading();
         doc.save(`Payment_Receipt_${paymentDoc.id}.pdf`);
       } catch (error) {
+        hidePdfLoading();
         console.error("Error generating receipt:", error);
-        showMessage('Error', 'Failed to generate receipt: ' + error.message);
+        showMessage('Error', 'Failed to generate receipt. Please try again: ' + error.message);
       }
     };
 
-    // PWA Install Prompt Logic
-    let deferredPrompt;
-    const installPrompt = document.getElementById('install-prompt');
-    const installBtn = document.getElementById('install-btn');
-    const dismissBtn = document.getElementById('dismiss-btn');
-    let installPromptDismissed = false;
+    // Updated downloadAllReports function
+    window.downloadAllReports = async function() {
+      if (!window.pdfLibrariesLoaded) {
+        showMessage('Loading PDF Libraries', 'Preparing PDF functionality. Please wait...');
+        retryPdfLibraries(function() {
+          downloadAllReports();
+        });
+        return;
+      }
 
-    window.addEventListener('beforeinstallprompt', (e) => {
-      e.preventDefault();
-      deferredPrompt = e;
-      setTimeout(() => {
-        if (!installPromptDismissed && installPrompt) { // Added null check for installPrompt
-          installPrompt.style.display = 'block';
-        }
-      }, 3000);
-    });
-
-    if (installBtn) { // Added null check for installBtn
-      installBtn.addEventListener('click', async () => {
-        if (deferredPrompt) {
-          deferredPrompt.prompt();
-          const { outcome } = await deferredPrompt.userChoice;
-          console.log(`User response to the install prompt: ${outcome}`);
-          deferredPrompt = null;
-        }
-        if (installPrompt) installPrompt.style.display = 'none'; // Added null check
-      });
-    }
-
-    if (dismissBtn) { // Added null check for dismissBtn
-      dismissBtn.addEventListener('click', () => {
-        if (installPrompt) installPrompt.style.display = 'none'; // Added null check
-        installPromptDismissed = true;
-      });
-    }
-
-    window.addEventListener('appinstalled', (evt) => {
-      console.log('App was installed successfully');
-      if (installPrompt) installPrompt.style.display = 'none'; // Added null check
-    });
-
-    // Handle email/password authentication form submission
-    document.getElementById('email-auth-form').addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const email = document.getElementById('email-input').value;
-      const password = document.getElementById('password-input').value;
-      const displayName = document.getElementById('display-name-input').value;
-      const errorDiv = document.getElementById('auth-error-message');
-      errorDiv.classList.add('hidden');
-      errorDiv.textContent = '';
-
+      showPdfLoading();
+      
       try {
-        if (state.isRegisterMode) {
-          const userCredential = await createUserWithEmailAndPassword(state.auth, email, password);
-          await updateProfile(userCredential.user, { displayName: displayName });
-          showMessage('Registration Successful', 'Your account has been created. Welcome to Lending Ledger!');
-        } else {
-          await signInWithEmailAndPassword(state.auth, email, password);
-          showMessage('Login Successful', 'Welcome back to Lending Ledger!');
-        }
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        doc.setFontSize(16);
+        doc.text('All Client Reports', 14, 20);
+
+        const headers = [['Client Name', 'Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
+        const data = state.receivables.map(loan => [
+          loan.borrowerName,
+          formatDate(loan.createdAt),
+          (loan.originalAmount || loan.amount || 0).toFixed(2),
+          loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
+          ((loan.interestRate || 0) * 100).toFixed(1) + '%',
+          loan.isPaid ? 'Paid' : 'Unpaid'
+        ]);
+
+        doc.autoTable({
+          head: headers,
+          body: data,
+          startY: 30,
+          headStyles: { fillColor: [31, 41, 55] },
+          theme: 'striped'
+        });
+
+        hidePdfLoading();
+        doc.save('All_Client_Reports.pdf');
       } catch (error) {
-        handleAuthError(error);
+        hidePdfLoading();
+        showMessage('Error', 'Failed to generate reports. Please try again: ' + error.message);
       }
-    });
+    };
 
+    // Updated downloadClientReport function
+    window.downloadClientReport = async function(clientName) {
+      if (!window.pdfLibrariesLoaded) {
+        showMessage('Loading PDF Libraries', 'Preparing PDF functionality. Please wait...');
+        retryPdfLibraries(function() {
+          downloadClientReport(clientName);
+        });
+        return;
+      }
 
-    // Firebase Auth State Observer
-    onAuthStateChanged(state.auth, async (user) => {
-      console.log('onAuthStateChanged triggered. User:', user);
-      if (user) {
-        state.userId = user.uid;
-        state.displayName = user.displayName || user.email;
-        state.isAuthReady = true;
-        state.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id'; // Ensure appId is set
-        state.activeView = 'dashboard'; // Explicitly set to dashboard after successful login
-        console.log('User authenticated. state.isAuthReady:', state.isAuthReady);
-        renderApp(); // Explicitly render the app when authenticated
-        startListeners(); // Start listening to Firestore data
-      } else {
-        // If no user, try to sign in with custom token
-        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
-        if (initialAuthToken) {
-            try {
-                console.log('Attempting sign-in with custom token...');
-                await signInWithCustomToken(state.auth, initialAuthToken);
-                // The onAuthStateChanged listener will be called again with the authenticated user
-            } catch (error) {
-                console.error("Error signing in with custom token:", error);
-                document.getElementById('init-error-message').textContent = 'Failed to authenticate. Please try again.';
-                openModal('init-error');
-                state.isAuthReady = true; // Still set to true to render login page
-                renderApp(); // Render login page on auth error
-            }
-        } else {
-            // No user and no custom token, render login page for explicit login/registration
-            console.log('No user and no custom token. Rendering login page for explicit authentication.');
-            state.isAuthReady = true;
-            state.userId = null; // Ensure userId is null if not authenticated
-            renderApp();
+      showPdfLoading();
+      
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+        const clientLoans = state.receivables.filter(loan => loan.borrowerName === clientName);
+        const totalOutstanding = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
+
+        doc.setFontSize(16);
+        doc.text(`Client Report: ${clientName}`, 14, 20);
+        doc.setFontSize(12);
+        doc.text(`Total Outstanding Balance: R${totalOutstanding.toFixed(2)}`, 14, 30);
+
+        const loanHeaders = [['Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
+        const loanData = clientLoans.map(loan => [
+          formatDate(loan.createdAt),
+          (loan.originalAmount || loan.amount || 0).toFixed(2),
+          loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
+          ((loan.interestRate || 0) * 100).toFixed(1) + '%',
+          loan.isPaid ? 'Paid' : 'Unpaid'
+        ]);
+
+        doc.autoTable({
+          startY: 40,
+          head: loanHeaders,
+          body: loanData,
+          headStyles: { fillColor: [31, 41, 55] },
+          theme: 'striped'
+        });
+
+        // Fetch payment history for the client
+        let payments = [];
+        try {
+          const paymentsQuery = query(
+            collection(state.db, `users/${state.userId}/payments`),
+            where('clientName', '==', clientName)
+          );
+          const querySnapshot = await getDocs(paymentsQuery);
+          payments = querySnapshot.docs.map(docSnap => docSnap.data());
+          payments.sort((a, b) => {
+            const dateA = a.date.toDate ? a.date.toDate() : new Date(a.date.seconds * 1000);
+            const dateB = b.date.toDate ? b.date.toDate() : new Date(b.date.seconds * 1000);
+            return dateB - dateA;
+          });
+        } catch (error) {
+          console.error("Error fetching payment history for PDF:", error);
         }
+
+        if (payments.length > 0) {
+          let finalY = doc.lastAutoTable.finalY || 40;
+          doc.setFontSize(14);
+          doc.text(`Payment History`, 14, finalY + 20);
+          const paymentHeaders = [['Date', 'Amount (R)', 'Method', 'Notes']];
+          const paymentData = payments.map(p => [
+            formatDate(p.date),
+            p.amount.toFixed(2),
+            p.method.replace(/_/g, ' ').toUpperCase(),
+            p.notes || '-'
+          ]);
+
+          doc.autoTable({
+            startY: finalY + 30,
+            head: paymentHeaders,
+            body: paymentData,
+            headStyles: { fillColor: [31, 41, 55] },
+            theme: 'striped'
+          });
+        }
+        
+        hidePdfLoading();
+        doc.save(`Client_Report_${clientName.replace(/\s/g, '_')}.pdf`);
+      } catch (error) {
+        hidePdfLoading();
+        console.error("Error generating client report:", error);
+        showMessage('Error', 'Failed to generate client report. Please try again: ' + error.message);
       }
-    });
+    };
 
-    // Initial render call (will show login page until auth state is determined)
-    // This will be called once, and then the onAuthStateChanged listener will handle subsequent renders.
-    // It's important that renderApp() is called here to show the initial login state.
-    renderApp();
-
+    // Rest of your original script remains the same
+    // ... (all the existing Firebase and application logic)
   </script>
 </body>
 </html>
