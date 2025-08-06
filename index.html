@@ -327,9 +327,6 @@
     };
 
     // Firebase configuration and initialization
-    // Using the Firebase configuration provided by the user.
-    // The __app_id and __firebase_config variables are no longer used here
-    // as the user has provided explicit configuration.
     const firebaseConfig = {
       apiKey: "AIzaSyArljsBjgdSiZxKYQnAYMSx93C8H6jBy0Y",
       authDomain: "loan-lending-772ad.firebaseapp.com",
@@ -344,23 +341,32 @@
     state.db = getFirestore(app);
     state.auth = getAuth(app);
 
-    // Function to calculate accrued interest on the outstanding balance
+    // Function to calculate current balance.
+    // NOW: It simply returns the `currentBalance` stored in the transaction object.
+    // The interest is now "front-loaded" when the loan is created.
     const calculateCurrentBalance = (transaction) => {
       if (transaction.isPaid) {
         return 0;
       }
+      // If currentBalance is explicitly set (e.g., from loan creation with front-loaded interest)
+      // or updated by payments, use that.
+      if (transaction.currentBalance !== undefined && transaction.currentBalance !== null) {
+        return transaction.currentBalance;
+      }
+      // Fallback for older data or if currentBalance wasn't set upfront.
+      // This part will dynamically accrue interest from createdAt.
+      // This ensures backward compatibility but for new loans, currentBalance will be present.
       if (!transaction.createdAt) {
-        return transaction.currentBalance || transaction.amount || 0;
+        return transaction.amount || 0;
       }
       
       const now = new Date();
       const createdAtDate = transaction.createdAt.toDate ? transaction.createdAt.toDate() : new Date(transaction.createdAt.seconds * 1000);
       const monthsElapsed = (now.getFullYear() - createdAtDate.getFullYear()) * 12 + (now.getMonth() - createdAtDate.getMonth());
       const monthlyInterestRate = (transaction.interestRate || 0) / 100;
-      // Ensure currentBalance is initialized correctly for new loans
-      const initialBalance = transaction.currentBalance !== undefined ? transaction.currentBalance : transaction.amount;
-      const currentBalance = initialBalance * Math.pow(1 + monthlyInterestRate, monthsElapsed);
-      return currentBalance;
+      const initialAmount = transaction.originalAmount || transaction.amount || 0;
+      
+      return initialAmount * Math.pow(1 + monthlyInterestRate, monthsElapsed);
     };
 
     // Function to format date
@@ -522,14 +528,13 @@
       paymentHistoryTable.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Loading payment history...</td></tr>';
 
       try {
-        // Removed orderBy to prevent index issues; client-side sorting will be applied if needed for display
         const paymentsQuery = query(
           collection(state.db, `users/${state.userId}/payments`),
           where('clientName', '==', clientName)
         );
 
         const querySnapshot = await getDocs(paymentsQuery);
-        let payments = querySnapshot.docs.map(docSnap => docSnap.data());
+        let payments = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
 
         // Client-side sorting by date (descending)
         payments.sort((a, b) => {
@@ -577,10 +582,10 @@
     };
 
     const renderDashboard = () => {
+      // Use the stored currentBalance for receivables, as it now includes front-loaded interest
       const totalReceivable = state.receivables.filter(t => !t.isPaid).reduce((sum, t) => sum + calculateCurrentBalance(t), 0);
       const totalPayable = state.payables.filter(t => !t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
       const totalPaidReceivable = state.receivables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.totalPaidAmount || 0), 0);
-      // For payables, totalPaidPayable is simply the sum of amounts of paid payables
       const totalPaidPayable = state.payables.filter(t => t.isPaid).reduce((sum, t) => sum + (t.amount || 0), 0);
 
       // Calculate total interest profit from paid loans
@@ -669,6 +674,7 @@
     const renderClientReportView = () => {
       const clientLoans = state.receivables.filter(loan => loan.borrowerName === state.currentClientName);
       const totalLoanAmount = clientLoans.reduce((sum, loan) => sum + (loan.originalAmount || loan.amount || 0), 0);
+      // Use calculateCurrentBalance for display, which now just returns the stored currentBalance
       const totalOutstandingBalance = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
 
       const loansList = clientLoans.length > 0 ?
@@ -976,7 +982,8 @@
 
         if (transactionDoc.exists()) {
           const data = transactionDoc.data();
-          const currentBalance = calculateCurrentBalance(data);
+          // Use the stored currentBalance for payment calculation
+          const currentBalance = data.currentBalance || data.amount; 
 
           if (paymentAmount > currentBalance) {
             showMessage('Invalid Amount', `Payment amount cannot exceed current balance of R${currentBalance.toFixed(2)}.`);
@@ -1002,9 +1009,9 @@
             createdAt: serverTimestamp(),
           };
 
-          // Update transaction document with the new totalPaidAmount
+          // Update transaction document with the new totalPaidAmount and new currentBalance
           await updateDoc(transactionDocRef, {
-            currentBalance: newBalance,
+            currentBalance: newBalance, // Update the stored currentBalance
             isPaid: isPaid,
             lastPaymentAt: serverTimestamp(),
             lastPaymentAmount: paymentAmount,
@@ -1068,10 +1075,25 @@
         data.borrowerName = borrowerName;
         data.interestRate = interestRate;
         data.loanPeriod = loanPeriod;
-        // For new loans, currentBalance starts as the original amount
+        
+        // Calculate initial currentBalance including total expected interest for new loans
         if (!transactionId) {
-            data.currentBalance = amount;
-            data.originalAmount = amount;
+            // Calculate total expected repayment including compound interest for the entire loan period
+            const totalExpectedRepayment = amount * Math.pow(1 + interestRate, loanPeriod);
+            data.currentBalance = totalExpectedRepayment;
+            data.originalAmount = amount; // originalAmount remains the principal
+        } else {
+            // When editing an existing loan, we only update the loan parameters.
+            // The currentBalance will be managed by payments.
+            // If the user changes amount, interestRate, or loanPeriod on an existing loan,
+            // the 'currentBalance' in the database will not be automatically recalculated
+            // to a new 'total expected repayment'. It will continue to reflect
+            // 'original total expected repayment - payments'.
+            // If a recalculation of the outstanding balance based on new terms is desired
+            // for existing loans, that would require more complex logic involving
+            // recalculating the balance from the start date with the new terms,
+            // and potentially adjusting past payments. For this request, we're focusing
+            // on the initial setting for *new* loans.
         }
       }
 
@@ -1079,12 +1101,14 @@
         if (transactionId) {
           // If editing an existing transaction, only update fields that might change
           const updateData = {
-            amount: data.amount,
+            amount: data.amount, // This is the original amount
             dueDate: data.dueDate,
             ...(isPayable ? { lenderName: data.lenderName } : {
               borrowerName: data.borrowerName,
               interestRate: data.interestRate,
               loanPeriod: data.loanPeriod
+              // Do NOT update currentBalance here for existing loans,
+              // as its value is managed by payments after initial creation.
             })
           };
           await updateDoc(doc(state.db, collectionPath, transactionId), updateData);
