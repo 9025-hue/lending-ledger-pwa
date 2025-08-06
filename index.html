@@ -282,54 +282,9 @@
       console.log('App was installed successfully');
       installPrompt.style.display = 'none';
     });
-  </script>
-
-  <script type="module">
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import {
-        getAuth,
-        onAuthStateChanged,
-        signOut,
-        createUserWithEmailAndPassword,
-        signInWithEmailAndPassword,
-        sendPasswordResetEmail,
-        updateProfile,
-        signInWithCustomToken
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import {
-      getFirestore,
-      collection,
-      onSnapshot,
-      doc,
-      setDoc,
-      addDoc,
-      updateDoc,
-      deleteDoc,
-      serverTimestamp,
-      getDoc,
-      getDocs,
-      query,
-      where,
-      writeBatch // Import writeBatch for atomic operations
-    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-    // Expose Firebase Firestore functions globally for inline event handlers
-    window.firebaseFirestore = {
-        doc,
-        collection,
-        getDoc,
-        getDocs,
-        query,
-        where,
-        updateDoc,
-        addDoc,
-        deleteDoc,
-        writeBatch,
-        serverTimestamp
-    };
 
 
-    // Global state management
+    // Global state management (defined here for access by PDF functions)
     const state = {
       db: null,
       auth: null,
@@ -345,42 +300,14 @@
       appId: null, // Add appId to state
     };
 
-    // Firebase configuration and initialization
-    // The firebaseConfig is provided by the environment, no need to hardcode it.
-    // Ensure __firebase_config is parsed correctly.
-    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-      apiKey: "AIzaSyArljsBjgdSiZxKYQnAYMSx93C8H6jBy0Y",
-      authDomain: "loan-lending-772ad.firebaseapp.com",
-      projectId: "loan-lending-772ad",
-      storageBucket: "loan-lending-772ad.firebasestorage.app",
-      messagingSenderId: "308404853120",
-      appId: "1:308404853120:web:18b3a4ab1189e9cb8a0965",
-      measurementId: "G-1NS69YRCF0"
-    };
-
-    const app = initializeApp(firebaseConfig);
-    state.db = getFirestore(app);
-    state.auth = getAuth(app);
-
-    // Get the appId from the global variable provided by the environment
-    state.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-
-
     // Function to calculate current balance.
-    // NOW: It simply returns the `currentBalance` stored in the transaction object.
-    // The interest is now "front-loaded" when the loan is created.
     const calculateCurrentBalance = (transaction) => {
       if (transaction.isPaid) {
         return 0;
       }
-      // If currentBalance is explicitly set (e.g., from loan creation with front-loaded interest)
-      // or updated by payments, use that.
       if (transaction.currentBalance !== undefined && transaction.currentBalance !== null) {
         return transaction.currentBalance;
       }
-      // Fallback for older data or if currentBalance wasn't set upfront.
-      // This part will dynamically accrue interest from createdAt.
-      // This ensures backward compatibility but for new loans, currentBalance will be present.
       if (!transaction.createdAt) {
         return transaction.amount || 0;
       }
@@ -432,6 +359,244 @@
       cancelBtn.addEventListener('click', handleCancel);
       openModal('confirm-modal');
     };
+
+    // Download PDF report for all clients
+    window.downloadAllReports = async () => {
+      if (!window.jspdf || !window.jspdf.jsPDF || !window.jspdf.autoTable) {
+        showMessage('Error', 'Failed to load PDF libraries. Please refresh and try again.');
+        return;
+      }
+
+      // Check for Firebase initialization before proceeding with data access
+      if (!state.db || !state.userId || !state.appId) {
+        showMessage('Error', 'Application not fully initialized. Please try again in a moment.');
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+
+      doc.setFontSize(16);
+      doc.text('All Client Reports', 14, 20);
+
+      const headers = [['Client Name', 'Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
+      // Corrected path for receivables
+      const data = state.receivables.map(loan => [
+        loan.borrowerName,
+        formatDate(loan.createdAt),
+        (loan.originalAmount || loan.amount || 0).toFixed(2),
+        loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
+        ((loan.interestRate || 0) * 100).toFixed(1) + '%',
+        loan.isPaid ? 'Paid' : 'Unpaid'
+      ]);
+
+      doc.autoTable({
+        head: headers,
+        body: data,
+        startY: 30,
+        headStyles: { fillColor: [31, 41, 55] },
+        theme: 'striped'
+      });
+
+      doc.save('All_Client_Reports.pdf');
+    };
+
+    // Download PDF report for a specific client, including payment history
+    window.downloadClientReport = async (clientName) => {
+      if (!window.jspdf || !window.jspdf.jsPDF || !window.jspdf.autoTable) {
+        showMessage('Error', 'Failed to load PDF libraries. Please refresh and try again.');
+        return;
+      }
+
+      // Check for Firebase initialization before proceeding with data access
+      if (!state.db || !state.userId || !state.appId) {
+        showMessage('Error', 'Application not fully initialized. Please try again in a moment.');
+        return;
+      }
+
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF();
+      // Corrected path for receivables
+      const clientLoans = state.receivables.filter(loan => loan.borrowerName === clientName);
+      const totalOutstanding = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
+
+      doc.setFontSize(16);
+      doc.text(`Client Report: ${clientName}`, 14, 20);
+      doc.setFontSize(12);
+      doc.text(`Total Outstanding Balance: R${totalOutstanding.toFixed(2)}`, 14, 30);
+
+      const loanHeaders = [['Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
+      const loanData = clientLoans.map(loan => [
+        formatDate(loan.createdAt),
+        (loan.originalAmount || loan.amount || 0).toFixed(2),
+        loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
+        ((loan.interestRate || 0) * 100).toFixed(1) + '%',
+        loan.isPaid ? 'Paid' : 'Unpaid'
+      ]);
+
+      doc.autoTable({
+        startY: 40,
+        head: loanHeaders,
+        body: loanData,
+        headStyles: { fillColor: [31, 41, 55] },
+        theme: 'striped'
+      });
+
+      // Fetch payment history for the client - Corrected path
+      let payments = [];
+      try {
+        // Use window.firebaseFirestore for Firestore calls
+        const paymentsQuery = window.firebaseFirestore.query(
+          window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
+          window.firebaseFirestore.where('clientName', '==', clientName)
+        );
+        const querySnapshot = await window.firebaseFirestore.getDocs(paymentsQuery);
+        payments = querySnapshot.docs.map(docSnap => docSnap.data());
+        // Client-side sort payments by date descending
+        payments.sort((a, b) => {
+          const dateA = a.date.toDate ? a.date.toDate() : new Date(a.date.seconds * 1000);
+          const dateB = b.date.toDate ? b.date.toDate() : new Date(b.date.seconds * 1000);
+          return dateB - dateA;
+        });
+      } catch (error) {
+        console.error("Error fetching payment history for PDF:", error);
+        showMessage('Error', 'Failed to fetch payment history for PDF: ' + error.message);
+      }
+
+      if (payments.length > 0) {
+        let finalY = doc.lastAutoTable.finalY || 40;
+        doc.setFontSize(14);
+        doc.text(`Payment History`, 14, finalY + 20);
+        const paymentHeaders = [['Date', 'Amount (R)', 'Method', 'Notes']];
+        const paymentData = payments.map(p => [
+          formatDate(p.date),
+          p.amount.toFixed(2),
+          p.method.replace(/_/g, ' ').toUpperCase(),
+          p.notes || '-'
+        ]);
+
+        doc.autoTable({
+          startY: finalY + 30,
+          head: paymentHeaders,
+          body: paymentData,
+          headStyles: { fillColor: [31, 41, 55] },
+          theme: 'striped'
+        });
+      }
+      
+      doc.save(`Client_Report_${clientName.replace(/\s/g, '_')}.pdf`);
+    };
+
+    // Generate PDF receipt for a single payment
+    window.generatePaymentReceipt = async (paymentId) => {
+      try {
+        // Add a check for Firebase initialization
+        if (!state.db || !state.userId || !state.appId) {
+          showMessage('Error', 'Application not fully initialized. Please try again in a moment.');
+          return;
+        }
+
+        if (!window.jspdf || !window.jspdf.jsPDF) {
+          showMessage('Error', 'Failed to load PDF library. Please refresh and try again.');
+          return;
+        }
+
+        // Corrected path for payments
+        const paymentDoc = await window.firebaseFirestore.getDoc(window.firebaseFirestore.doc(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`, paymentId));
+        if (!paymentDoc.exists()) {
+          showMessage('Error', 'Payment not found.');
+          return;
+        }
+
+        const payment = paymentDoc.data();
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF();
+
+        // Add receipt content
+        doc.setFontSize(18);
+        doc.text('PAYMENT RECEIPT', 105, 20, { align: 'center' });
+
+        doc.setFontSize(12);
+        doc.text(`Receipt ID: ${paymentDoc.id}`, 20, 40);
+        doc.text(`Date: ${formatDate(payment.date)}`, 20, 50);
+        doc.text(`Client: ${payment.clientName}`, 20, 60);
+        doc.text(`Amount: R${payment.amount.toFixed(2)}`, 20, 70);
+        doc.text(`Method: ${payment.method ? payment.method.replace(/_/g, ' ').toUpperCase() : '-'}`, 20, 80);
+        doc.text(`Notes: ${payment.notes || '-'}`, 20, 90);
+
+        // Download the PDF
+        doc.save(`Payment_Receipt_${paymentDoc.id}.pdf`);
+      } catch (error) {
+        console.error("Error generating receipt:", error);
+        showMessage('Error', 'Failed to generate receipt: ' + error.message);
+      }
+    };
+  </script>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import {
+        getAuth,
+        onAuthStateChanged,
+        signOut,
+        createUserWithEmailAndPassword,
+        signInWithEmailAndPassword,
+        sendPasswordResetEmail,
+        updateProfile,
+        signInWithCustomToken
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getFirestore,
+      collection,
+      onSnapshot,
+      doc,
+      setDoc,
+      addDoc,
+      updateDoc,
+      deleteDoc,
+      serverTimestamp,
+      getDoc,
+      getDocs,
+      query,
+      where,
+      writeBatch // Import writeBatch for atomic operations
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // Expose Firebase Firestore functions globally for inline event handlers
+    window.firebaseFirestore = {
+        doc,
+        collection,
+        getDoc,
+        getDocs,
+        query,
+        where,
+        updateDoc,
+        addDoc,
+        deleteDoc,
+        writeBatch,
+        serverTimestamp
+    };
+
+    // Firebase configuration and initialization
+    // The firebaseConfig is provided by the environment, no need to hardcode it.
+    // Ensure __firebase_config is parsed correctly.
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "AIzaSyArljsBjgdSiZxKYQnAYMSx93C8H6jBy0Y",
+      authDomain: "loan-lending-772ad.firebaseapp.com",
+      projectId: "loan-lending-772ad",
+      storageBucket: "loan-lending-772ad.firebasestorage.app",
+      messagingSenderId: "308404853120",
+      appId: "1:308404853120:web:18b3a4ab1189e9cb8a0965",
+      measurementId: "G-1NS69YRCF0"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    state.db = getFirestore(app);
+    state.auth = getAuth(app);
+
+    // Get the appId from the global variable provided by the environment
+    state.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 
     // Toggles between login and register views on the auth page
     window.setAuthMode = (mode) => {
@@ -1220,166 +1385,6 @@
           showMessage('Error', 'Failed to delete client and associated data: ' + error.message);
         }
       });
-    };
-
-    // Generate PDF receipt for a single payment
-    window.generatePaymentReceipt = async (paymentId) => {
-      try {
-        // Add a check for Firebase initialization
-        if (!state.db || !state.userId || !state.appId) {
-          showMessage('Error', 'Application not fully initialized. Please try again in a moment.');
-          return;
-        }
-
-        if (!window.jspdf || !window.jspdf.jsPDF) {
-          showMessage('Error', 'Failed to load PDF library. Please refresh and try again.');
-          return;
-        }
-
-        // Corrected path for payments
-        const paymentDoc = await window.firebaseFirestore.getDoc(window.firebaseFirestore.doc(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`, paymentId));
-        if (!paymentDoc.exists()) {
-          showMessage('Error', 'Payment not found.');
-          return;
-        }
-
-        const payment = paymentDoc.data();
-
-        const { jsPDF } = window.jspdf;
-        const doc = new jsPDF();
-
-        // Add receipt content
-        doc.setFontSize(18);
-        doc.text('PAYMENT RECEIPT', 105, 20, { align: 'center' });
-
-        doc.setFontSize(12);
-        doc.text(`Receipt ID: ${paymentDoc.id}`, 20, 40);
-        doc.text(`Date: ${formatDate(payment.date)}`, 20, 50);
-        doc.text(`Client: ${payment.clientName}`, 20, 60);
-        doc.text(`Amount: R${payment.amount.toFixed(2)}`, 20, 70);
-        doc.text(`Method: ${payment.method ? payment.method.replace(/_/g, ' ').toUpperCase() : '-'}`, 20, 80);
-        doc.text(`Notes: ${payment.notes || '-'}`, 20, 90);
-
-        // Download the PDF
-        doc.save(`Payment_Receipt_${paymentDoc.id}.pdf`);
-      } catch (error) {
-        console.error("Error generating receipt:", error);
-        showMessage('Error', 'Failed to generate receipt: ' + error.message);
-      }
-    };
-
-    // Download PDF report for all clients
-    window.downloadAllReports = async () => {
-      if (!window.jspdf || !window.jspdf.jsPDF || !window.jspdf.autoTable) {
-        showMessage('Error', 'Failed to load PDF libraries. Please refresh and try again.');
-        return;
-      }
-
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-
-      doc.setFontSize(16);
-      doc.text('All Client Reports', 14, 20);
-
-      const headers = [['Client Name', 'Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
-      // Corrected path for receivables
-      const data = state.receivables.map(loan => [
-        loan.borrowerName,
-        formatDate(loan.createdAt),
-        (loan.originalAmount || loan.amount || 0).toFixed(2),
-        loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
-        ((loan.interestRate || 0) * 100).toFixed(1) + '%',
-        loan.isPaid ? 'Paid' : 'Unpaid'
-      ]);
-
-      doc.autoTable({
-        head: headers,
-        body: data,
-        startY: 30,
-        headStyles: { fillColor: [31, 41, 55] },
-        theme: 'striped'
-      });
-
-      doc.save('All_Client_Reports.pdf');
-    };
-
-    // Download PDF report for a specific client, including payment history
-    window.downloadClientReport = async (clientName) => {
-      if (!window.jspdf || !window.jspdf.jsPDF || !window.jspdf.autoTable) {
-        showMessage('Error', 'Failed to load PDF libraries. Please refresh and try again.');
-        return;
-      }
-
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF();
-      // Corrected path for receivables
-      const clientLoans = state.receivables.filter(loan => loan.borrowerName === clientName);
-      const totalOutstanding = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
-
-      doc.setFontSize(16);
-      doc.text(`Client Report: ${clientName}`, 14, 20);
-      doc.setFontSize(12);
-      doc.text(`Total Outstanding Balance: R${totalOutstanding.toFixed(2)}`, 14, 30);
-
-      const loanHeaders = [['Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
-      const loanData = clientLoans.map(loan => [
-        formatDate(loan.createdAt),
-        (loan.originalAmount || loan.amount || 0).toFixed(2),
-        loan.isPaid ? '0.00' : calculateCurrentBalance(loan).toFixed(2),
-        ((loan.interestRate || 0) * 100).toFixed(1) + '%',
-        loan.isPaid ? 'Paid' : 'Unpaid'
-      ]);
-
-      doc.autoTable({
-        startY: 40,
-        head: loanHeaders,
-        body: loanData,
-        headStyles: { fillColor: [31, 41, 55] },
-        theme: 'striped'
-      });
-
-      // Fetch payment history for the client - Corrected path
-      let payments = [];
-      try {
-        const paymentsQuery = window.firebaseFirestore.query(
-          window.firebaseFirestore.collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
-          window.firebaseFirestore.where('clientName', '==', clientName)
-        );
-        const querySnapshot = await window.firebaseFirestore.getDocs(paymentsQuery);
-        payments = querySnapshot.docs.map(docSnap => docSnap.data());
-        // Client-side sort payments by date descending
-        payments.sort((a, b) => {
-          const dateA = a.date.toDate ? a.date.toDate() : new Date(a.date.seconds * 1000);
-          const dateB = b.date.toDate ? b.date.toDate() : new Date(b.date.seconds * 1000);
-          return dateB - dateA;
-        });
-      } catch (error) {
-        console.error("Error fetching payment history for PDF:", error);
-        showMessage('Error', 'Failed to fetch payment history for PDF: ' + error.message);
-      }
-
-      if (payments.length > 0) {
-        let finalY = doc.lastAutoTable.finalY || 40;
-        doc.setFontSize(14);
-        doc.text(`Payment History`, 14, finalY + 20);
-        const paymentHeaders = [['Date', 'Amount (R)', 'Method', 'Notes']];
-        const paymentData = payments.map(p => [
-          formatDate(p.date),
-          p.amount.toFixed(2),
-          p.method.replace(/_/g, ' ').toUpperCase(),
-          p.notes || '-'
-        ]);
-
-        doc.autoTable({
-          startY: finalY + 30,
-          head: paymentHeaders,
-          body: paymentData,
-          headStyles: { fillColor: [31, 41, 55] },
-          theme: 'striped'
-        });
-      }
-      
-      doc.save(`Client_Report_${clientName.replace(/\s/g, '_')}.pdf`);
     };
 
     // Handle email/password authentication form submission
