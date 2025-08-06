@@ -1396,11 +1396,11 @@
         renderApp(); // Explicitly render the app when authenticated
         startListeners(); // Start listening to Firestore data
       } else {
-        // If no user, try to sign in anonymously if initial token is available
+        // If no user, try to sign in with custom token or anonymously
         const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
         if (initialAuthToken) {
             try {
-                console.log('Attempting anonymous sign-in with custom token...');
+                console.log('Attempting sign-in with custom token...');
                 await signInWithCustomToken(state.auth, initialAuthToken);
                 // The onAuthStateChanged listener will be called again with the authenticated user
             } catch (error) {
@@ -1411,12 +1411,23 @@
                 renderApp(); // Render login page on auth error
             }
         } else {
-            // No user and no custom token, render login page
-            console.log('No user and no custom token. Rendering login page.');
-            state.isAuthReady = true;
-            // For unauthenticated users, ensure userId is a random string for Firestore paths
-            state.userId = crypto.randomUUID();
-            renderApp();
+            // If no custom token, sign in anonymously to get a persistent UID for the session
+            try {
+                console.log('No custom token. Attempting anonymous sign-in...');
+                const anonymousUserCredential = await signInAnonymously(state.auth);
+                state.userId = anonymousUserCredential.user.uid;
+                state.displayName = 'Anonymous User';
+                state.isAuthReady = true;
+                console.log('Anonymous user authenticated. state.isAuthReady:', state.isAuthReady, 'userId:', state.userId);
+                renderApp();
+                startListeners();
+            } catch (error) {
+                console.error("Error signing in anonymously:", error);
+                document.getElementById('init-error-message').textContent = 'Failed to sign in anonymously. Please try again.';
+                openModal('init-error');
+                state.isAuthReady = true; // Still set to true to render login page
+                renderApp(); // Render login page on auth error
+            }
         }
       }
     });
