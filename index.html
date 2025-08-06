@@ -1,10 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <head>
-  <!-- ... existing meta tags and links ... -->
-  <link rel="manifest" href="/manifest.json">
-  <!-- ... rest of your head content ... -->
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>" type="image/svg+xml" />
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,6 +11,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Lending Ledger">
   <meta name="description" content="Track your loans and manage your lending business">
+
+  <!-- Link to the Web App Manifest -->
+  <link rel="manifest" href="/manifest.json">
 
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -328,22 +327,29 @@
       activeView: 'dashboard',
       currentClientName: null,
       isRegisterMode: true,
+      appId: null, // Add appId to state
     };
 
     // Firebase configuration and initialization
-    const firebaseConfig = {
-      apiKey: "AIzaSyArljsBjgdSiZxKYQnAYMSx93C8H6jBy0Y",
-      authDomain: "loan-lending-772ad.firebaseapp.com",
-      projectId: "loan-lending-772ad",
-      storageBucket: "loan-lending-772ad.firebasestorage.app",
-      messagingSenderId: "308404853120",
-      appId: "1:308404853120:web:18b3a4ab1189e9cb8a0965",
-      measurementId: "G-1NS69YRCF0"
+    // The firebaseConfig is provided by the environment, no need to hardcode it.
+    // Ensure __firebase_config is parsed correctly.
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
+      apiKey: "YOUR_API_KEY", // Placeholder if running outside Canvas
+      authDomain: "YOUR_AUTH_DOMAIN",
+      projectId: "YOUR_PROJECT_ID",
+      storageBucket: "YOUR_STORAGE_BUCKET",
+      messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
+      appId: "YOUR_APP_ID",
+      measurementId: "YOUR_MEASUREMENT_ID"
     };
 
     const app = initializeApp(firebaseConfig);
     state.db = getFirestore(app);
     state.auth = getAuth(app);
+
+    // Get the appId from the global variable provided by the environment
+    state.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+
 
     // Function to calculate current balance.
     // NOW: It simply returns the `currentBalance` stored in the transaction object.
@@ -499,15 +505,17 @@
 
     // Start Firestore listeners for receivables and payables
     const startListeners = () => {
-      if (!state.db || !state.userId) {
-        console.error("startListeners called without a valid user ID or database instance.");
+      if (!state.db || !state.userId || !state.appId) {
+        console.error("startListeners called without a valid user ID, app ID, or database instance.");
         return;
       }
       
-      console.log(`Starting Firestore listeners for user ID: ${state.userId}`);
-      const receivablesPath = `users/${state.userId}/receivables`;
-      const payablesPath = `users/${state.userId}/payables`;
-      
+      console.log(`Starting Firestore listeners for user ID: ${state.userId}, App ID: ${state.appId}`);
+      // Corrected paths to include artifacts/${appId}
+      const receivablesPath = `artifacts/${state.appId}/users/${state.userId}/receivables`;
+      const payablesPath = `artifacts/${state.appId}/users/${state.userId}/payables`;
+      const paymentsPath = `artifacts/${state.appId}/users/${state.userId}/payments`; // Also for payments
+
       onSnapshot(collection(state.db, receivablesPath), (snapshot) => {
         state.receivables = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
         // Derive unique clients from receivables
@@ -532,8 +540,9 @@
       paymentHistoryTable.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-gray-500">Loading payment history...</td></tr>';
 
       try {
+        // Corrected path for payments
         const paymentsQuery = query(
-          collection(state.db, `users/${state.userId}/payments`),
+          collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
           where('clientName', '==', clientName)
         );
 
@@ -755,7 +764,7 @@
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Balance</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Interest Rate</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
@@ -812,7 +821,7 @@
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Due Date</th>
                   <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                  <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody class="bg-white divide-y divide-gray-200">
@@ -981,7 +990,8 @@
       }
 
       try {
-        const transactionDocRef = doc(state.db, `users/${state.userId}/receivables`, transactionId);
+        // Corrected path for receivables
+        const transactionDocRef = doc(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`, transactionId);
         const transactionDoc = await getDoc(transactionDocRef);
 
         if (transactionDoc.exists()) {
@@ -1022,8 +1032,8 @@
             totalPaidAmount: newTotalPaid
           });
 
-          // Add payment document
-          await addDoc(collection(state.db, `users/${state.userId}/payments`), paymentData);
+          // Add payment document - Corrected path
+          await addDoc(collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`), paymentData);
 
           closeModal('payment-modal');
           showMessage('Success', `Payment of R${paymentAmount.toFixed(2)} recorded successfully.`);
@@ -1052,7 +1062,8 @@
       }
 
       const isPayable = state.activeView === 'payable';
-      const collectionPath = `users/${state.userId}/${isPayable ? 'payables' : 'receivables'}`;
+      // Corrected collection path
+      const collectionPath = `artifacts/${state.appId}/users/${state.userId}/${isPayable ? 'payables' : 'receivables'}`;
 
       const data = {
         amount,
@@ -1131,14 +1142,15 @@
     // Delete a single transaction (loan or payable)
     window.deleteTransaction = async (transactionId, type) => {
       showConfirm('Delete Confirmation', `Are you sure you want to delete this ${type}? This action cannot be undone.`, async () => {
-        if (!state.db || !state.userId) {
+        if (!state.db || !state.userId || !state.appId) {
           showMessage('Error', 'Application not initialized or user not authenticated.');
           return;
         }
 
+        // Corrected collection path
         const collectionPath = type === 'receivable'
-          ? `users/${state.userId}/receivables`
-          : `users/${state.userId}/payables`;
+          ? `artifacts/${state.appId}/users/${state.userId}/receivables`
+          : `artifacts/${state.appId}/users/${state.userId}/payables`;
         const docRef = doc(state.db, collectionPath, transactionId);
 
         try {
@@ -1155,14 +1167,15 @@
     window.deleteClientConfirm = (clientName) => {
       showConfirm('Delete Client Confirmation', `Are you sure you want to delete client "${clientName}" and ALL their associated loans and payments? This action cannot be undone.`, async () => {
         try {
-          if (!state.db || !state.userId) {
+          if (!state.db || !state.userId || !state.appId) {
             showMessage('Error', 'Application not initialized or user not authenticated.');
             return;
           }
 
           const batch = writeBatch(state.db);
-          const receivablesRef = collection(state.db, `users/${state.userId}/receivables`);
-          const paymentsRef = collection(state.db, `users/${state.userId}/payments`);
+          // Corrected collection paths
+          const receivablesRef = collection(state.db, `artifacts/${state.appId}/users/${state.userId}/receivables`);
+          const paymentsRef = collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`);
 
           // Get all loans for the client
           const loansQuery = query(receivablesRef, where('borrowerName', '==', clientName));
@@ -1202,7 +1215,8 @@
           return;
         }
 
-        const paymentDoc = await getDoc(doc(state.db, `users/${state.userId}/payments`, paymentId));
+        // Corrected path for payments
+        const paymentDoc = await getDoc(doc(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`, paymentId));
         if (!paymentDoc.exists()) {
           showMessage('Error', 'Payment not found.');
           return;
@@ -1247,6 +1261,7 @@
       doc.text('All Client Reports', 14, 20);
 
       const headers = [['Client Name', 'Loan Date', 'Original Amount (R)', 'Current Balance (R)', 'Interest Rate (%)', 'Status']];
+      // Corrected path for receivables
       const data = state.receivables.map(loan => [
         loan.borrowerName,
         formatDate(loan.createdAt),
@@ -1276,6 +1291,7 @@
 
       const { jsPDF } = window.jspdf;
       const doc = new jsPDF();
+      // Corrected path for receivables
       const clientLoans = state.receivables.filter(loan => loan.borrowerName === clientName);
       const totalOutstanding = clientLoans.reduce((sum, loan) => sum + (loan.isPaid ? 0 : calculateCurrentBalance(loan)), 0);
 
@@ -1301,11 +1317,11 @@
         theme: 'striped'
       });
 
-      // Fetch payment history for the client
+      // Fetch payment history for the client - Corrected path
       let payments = [];
       try {
         const paymentsQuery = query(
-          collection(state.db, `users/${state.userId}/payments`),
+          collection(state.db, `artifacts/${state.appId}/users/${state.userId}/payments`),
           where('clientName', '==', clientName)
         );
         const querySnapshot = await getDocs(paymentsQuery);
